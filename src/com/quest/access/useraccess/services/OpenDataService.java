@@ -22,7 +22,6 @@ import org.json.JSONObject;
 import org.json.JSONTokener;
 
 import com.google.appengine.api.datastore.Entity;
-import com.google.appengine.api.datastore.Query;
 import com.google.appengine.api.datastore.Query.Filter;
 import com.google.appengine.api.datastore.Query.FilterOperator;
 import com.google.appengine.api.datastore.Query.FilterPredicate;
@@ -39,7 +38,6 @@ import com.quest.access.useraccess.services.annotations.WebService;
 import com.quest.access.useraccess.verification.SystemAction;
 import com.quest.access.useraccess.verification.UserAction;
 import com.quest.servlets.ClientWorker;
-import java.util.HashSet;
 import java.util.Iterator;
 
 /**
@@ -59,16 +57,18 @@ public class OpenDataService implements Serviceable {
                                                             "3001-5000","5001-7000","7001-10000","10001-50000","50001-100000"};
     private static final String[] BILL_PRICES = new String[]{"500","700","900","1200","1500","2000","3000","5000","7000","10000","30000"};
     
+    private static final String[] BILL_PRICES_DOLLAR = new String[]{"5","7","9","12","15","20","30","50","70","100","300"};
+    
     private static final String[] BILL_TIER_NAMES = new String[]{"TIER1","TIER2","TIER3","TIER4","TIER5","TIER6","TIER7","TIER8","TIER9","TIER10","TIER11"};
 
     
 
-    @Endpoint(name = "fetch_settings")
+    @Endpoint(name = "fetch_settings",cacheModifiers = {"open_data_service_save_settings"})
     public void fetchSettings(Server serv, ClientWorker worker) {
         JSONObject request = worker.getRequestData();
         String busId = request.optString("business_id");
         Filter filter1 = new FilterPredicate("BUSINESS_ID", FilterOperator.EQUAL, busId);
-        JSONObject data = Datastore.entityToJSON(Datastore.getSingleEntity("CONF_DATA", filter1));
+        JSONObject data = Datastore.entityToJSON(Datastore.getMultipleEntities("CONF_DATA", filter1));
         worker.setResponseData(data);
         serv.messageToClient(worker);
     }
@@ -124,7 +124,6 @@ public class OpenDataService implements Serviceable {
         //we need to get the business id
         JSONObject request = worker.getRequestData();
         String id = request.optString("business_id");
-        io.out("BUSINESS_ID : "+id);
         Filter filter1 = new FilterPredicate("ID", FilterOperator.EQUAL, id);
         JSONObject data = Datastore.entityToJSONArray(Datastore.getSingleEntity("BUSINESS_DATA", filter1));
         worker.setResponseData(data);
@@ -132,7 +131,7 @@ public class OpenDataService implements Serviceable {
     }
 
     @Endpoint(name = "save_business")
-    public void saveBusiness(Server serv, ClientWorker worker) {
+    public void saveBusiness(Server serv, ClientWorker worker) throws JSONException {
         JSONObject request = worker.getRequestData();
         String name = request.optString("business_name");
         String country = request.optString("country");
@@ -170,6 +169,10 @@ public class OpenDataService implements Serviceable {
 
             Datastore.insert("BUSINESS_USERS", propNames1, values1);
             Datastore.insert("BUSINESS_DATA", propNames, values);
+            
+            //load initial settings for the business
+            loadInitSettings(serv, busId);
+            
         } else if (saveType.equals("delete")) {
             //delete user data
             //this is an open service so check for privileges manually here
@@ -205,9 +208,9 @@ public class OpenDataService implements Serviceable {
     }
 
     private List<String> listToLowerCase(List<String> list) {
-        ArrayList<String> newList = new ArrayList<String>();
-        for (int x = 0; x < list.size(); x++) {
-            String str = list.get(x).toLowerCase();
+        ArrayList<String> newList = new ArrayList<>();
+        for (String list1 : list) {
+            String str = list1.toLowerCase();
             newList.add(str);
         }
         return newList;
@@ -362,6 +365,16 @@ public class OpenDataService implements Serviceable {
         }
 
     }
+    
+    @Endpoint(name = "billing_history")
+    public void billingHistory(Server serv, ClientWorker worker){
+        JSONObject requestData = worker.getRequestData();
+        String busId = requestData.optString("business_id");
+        Filter filter = new FilterPredicate("BUSINESS_ID", FilterOperator.EQUAL, busId);
+        JSONObject data = Datastore.entityToJSON(Datastore.getMultipleEntities("BUSINESS_BILL", filter));
+        worker.setResponseData(data);
+        serv.messageToClient(worker);
+    }
 
     @Endpoint(name = "pay_bill_mpesa")
     public void payBillMpesa(Server serv, ClientWorker worker) throws Exception {
@@ -407,6 +420,7 @@ public class OpenDataService implements Serviceable {
                 en2.setProperty("TIMESTAMP", en.getProperty("TIMESTAMP"));
                 en2.setProperty("AMOUNT", en.getProperty("AMOUNT"));
                 en2.setProperty("TRAN_TYPE", "1"); //1 for credit 0 for debit
+                en2.setProperty("SENDER_SERVICE","MPESA");
                 Datastore.insert(en2);
                 calculateAccountBalance(busId);
 
@@ -511,6 +525,7 @@ public class OpenDataService implements Serviceable {
             String busId = data.getProperty("ID").toString();
             Filter filter = new FilterPredicate("business_id", FilterOperator.EQUAL, busId);
             Entity stat = Datastore.getSingleEntity("USAGE_STATS", filter);
+            JSONObject conf = Datastore.entityToJSON(Datastore.getMultipleEntities("CONF_DATA", filter));
             Long count = Long.parseLong(stat.getProperty("USAGE_COUNT").toString());
             //check whether stat has been exceeded
             if (count > USAGE_THRESHOLD) { //bill this guy!
@@ -521,10 +536,11 @@ public class OpenDataService implements Serviceable {
                 en2.setProperty("BUSINESS_ID", busId);
                 en2.setProperty("TRANS_ID", transId);
                 en2.setProperty("TIMESTAMP", System.currentTimeMillis());
-                
-                Float billAmount = getBillPrice(count, billTiers);
+                String currency = conf.optJSONArray("CONF_VALUE").optString(conf.optJSONArray("CONF_KEY").toList().indexOf("billing_currency"));
+                Float billAmount = getBillPrice(count, billTiers,currency);
                 en2.setProperty("AMOUNT",billAmount);
                 en2.setProperty("TRAN_TYPE", "0"); //1 for credit 0 for debit
+                en2.setProperty("SENDER_SERVICE", "Quest Invoice");
                 Datastore.insert(en2);
                 calculateAccountBalance(busId);//calculate new account balance
 
@@ -537,7 +553,7 @@ public class OpenDataService implements Serviceable {
                 String body = serv.getEmailTemplate("pay-bill");
                 body = body.replace("{trans_id}", transId);
                 body = body.replace("{business_name}", busName);
-                body = body.replace("{amount}", billAmount.toString());
+                body = body.replace("{amount}", billAmount.toString() + " "+ currency);
                 serv.sendEmail(from, to, "Invoice", body);
             }
     		//get the owner email address
@@ -552,8 +568,8 @@ public class OpenDataService implements Serviceable {
         if(tiers == null){
             //the tiers dont exist so add them to the datastore from the code
             for(int x = 0 ; x < BILL_TIER_NAMES.length; x++){
-                Datastore.insert("BILL_TIERS", new String[]{"TIER_NAME","TIER_LIMITS","TIER_PRICE"}, 
-                                               new String[]{BILL_TIER_NAMES[x],BILL_TIERS[x],BILL_PRICES[x]});
+                Datastore.insert("BILL_TIERS", new String[]{"TIER_NAME","TIER_LIMITS","TIER_PRICE_KES","TIER_PRICE_USD"}, 
+                                               new String[]{BILL_TIER_NAMES[x],BILL_TIERS[x],BILL_PRICES[x],BILL_PRICES_DOLLAR[x]});
             }
         }
         //these tiers may have even been updated or changed so read new ones from the datastore
@@ -563,19 +579,20 @@ public class OpenDataService implements Serviceable {
             String limit = tier.getProperty("TIER_LIMITS").toString();//300-500
             Integer limitOne = Integer.parseInt(limit.substring(0, limit.indexOf("-")));
             Integer limitTwo = Integer.parseInt(limit.substring(limit.indexOf("-") + 1, limit.length()));
-            Float price = Float.parseFloat(tier.getProperty("TIER_PRICE").toString());
-            allTiers.add(new Object[]{name, limitOne, limitTwo, price});
+            Float priceKes = Float.parseFloat(tier.getProperty("TIER_PRICE_KES").toString());
+            Float priceUsd = Float.parseFloat(tier.getProperty("TIER_PRICE_USD").toString());
+            allTiers.add(new Object[]{name, limitOne, limitTwo, priceKes,priceUsd});
         }
         
         return allTiers;
     }
     
-    private Float getBillPrice(Long usageCount,ArrayList allTiers){
+    private Float getBillPrice(Long usageCount,ArrayList allTiers,String currency){
         for (Object allTier : allTiers) {
             Object[] tier = (Object[]) allTier;
             Integer limitOne = Integer.parseInt(tier[1].toString());
             Integer limitTwo = Integer.parseInt(tier[2].toString());
-            Float price = Float.parseFloat(tier[3].toString());
+            Float price = currency.equals("KES") ? Float.parseFloat(tier[3].toString()) : Float.parseFloat(tier[4].toString()) ;
             if(usageCount >= limitOne && usageCount <= limitTwo){
                 return price;
             }
@@ -610,6 +627,8 @@ public class OpenDataService implements Serviceable {
         worker.setResponseData(change);
         serv.messageToClient(worker);
     }
+    
+    
 
     @Override
     public void service() {
@@ -649,5 +668,44 @@ public class OpenDataService implements Serviceable {
         ClientWorker worker = new ClientWorker("save_business", "open_data_service", request, null, null, null);
         worker.setPropagateResponse(false);
         saveBusiness(serv, worker);
+    }
+    
+    private void loadInitSettings(Server serv,String busId) throws JSONException{
+        JSONObject request = new JSONObject();
+        request.put("enable_undo_sales", "1");
+        request.put("add_tax", "0");
+        request.put("add_comm", "0");
+        request.put("add_purchases", "0");
+        request.put("track_stock", "1");
+        request.put("user_interface", "touch");
+        request.put("no_of_receipts", "1");
+        request.put("receipt_header", "");
+        request.put("receipt_footer", "");
+        request.put("billing_currency", "KES");
+        request.put("business_id",busId);
+        ClientWorker worker = new ClientWorker("save_settings", "open_data_service", request, null, null, null);
+        worker.setPropagateResponse(false);
+        saveSettings(serv, worker);
+    }
+    
+    @Endpoint(name = "migrate_entities")
+    public void migrateEntities(Server serv, ClientWorker worker){
+        //current PRODUCT_DATA
+        //EXTRA COLUMNS PRODUCT_DATA
+        //PRODUCT_CATEGORY,PRODUCT_SUB_CATEGORY,PRODUCT_PARENT,PRODUCT_UNIT_SIZE,TAX,COMMISSION
+        Iterable<Entity> allEntities = Datastore.getAllEntities("PRODUCT_DATA");
+        for(Entity en : allEntities){
+            String prodType = en.getProperty("PRODUCT_TYPE").toString();
+            en.setProperty("PRODUCT_CATEGORY", prodType);
+            en.setProperty("PRODUCT_SUB_CATEGORY",prodType);
+            en.setProperty("TAX",0.0);
+            en.setProperty("COMMISSION", 0.0);
+            en.setProperty("PRODUCT_UNIT_SIZE",1.0);
+            en.setProperty("PRODUCT_PARENT","");
+            en.removeProperty("PRODUCT_TYPE");
+            Datastore.insert(en);
+        }
+        worker.setResponseData(Message.SUCCESS);
+        serv.messageToClient(worker);
     }
 }

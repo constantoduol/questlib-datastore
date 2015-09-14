@@ -56,12 +56,8 @@ public class ServerLink extends HttpServlet {
             
             ConcurrentHashMap<String, HttpSession> sessions = Server.getUserSessions();
             boolean authValid = sessionId != null && sessions.containsKey(sessionId);
-            Object ses = sessionId == null || sessionId.equals("null") ? null : sessions.get(sessionId);
-            String busId = ses == null ? "Anonymous" : ((HttpSession)ses).getAttribute("business_id").toString();
-            
             String service = headers.optString("request_svc");
             JSONObject requestData = (JSONObject) obj.optJSONObject("request_object");
-            requestData.put("business_id",busId);
             ClientWorker worker = new ClientWorker(msg, service, requestData, session, response, request);
             if (!authRequired(service, worker) || authValid) {
                 worker.work();

@@ -226,6 +226,19 @@ public class Datastore {
         PreparedQuery pq = datastore.prepare(query);
         return pq.asIterable(options);
     }
+    
+    public static Iterable<Entity> getMultipleEntities(String entityName, FetchOptions options, Filter... filters) {
+        Query query = new Query(entityName);
+        if (filters.length == 0) {
+
+        } else if (filters.length == 1) {
+            query.setFilter(filters[0]);
+        } else {
+            query.setFilter(CompositeFilterOperator.and(filters));
+        }
+        PreparedQuery pq = datastore.prepare(query);
+        return pq.asIterable(options);
+    }
 
     public static Iterable<Entity> getMultipleEntities(String entityName, String propertyName, String value, FilterOperator filterOperator) {
         Filter filter = new FilterPredicate(propertyName, filterOperator, value);
@@ -430,6 +443,19 @@ public class Datastore {
         for (Entity en : pq.asIterable()) {
             datastore.delete(en.getKey());
         }
+    }
+    
+    public static Long getCount(String entity,Filter ... filters){
+        Query query = new Query("__Stat_"+entity+"__");
+        if (filters.length == 0) {
+
+        } else if (filters.length == 1) {
+            query.setFilter(filters[0]);
+        } else {
+            query.setFilter(CompositeFilterOperator.and(filters));
+        }
+        Entity entityStat = datastore.prepare(query).asSingleEntity();
+        return (Long) entityStat.getProperty("count");  
     }
     
     
