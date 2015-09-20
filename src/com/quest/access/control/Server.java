@@ -47,7 +47,9 @@ import com.quest.access.useraccess.verification.SystemAction;
 import com.quest.mail.SendGrid;
 import com.quest.mail.SendGridException;
 import com.quest.servlets.ClientWorker;
+import java.util.Arrays;
 import java.util.Iterator;
+import java.util.List;
 import java.util.logging.Logger;
 
 /**
@@ -244,17 +246,16 @@ public class Server {
      * methods
      */
     private final ConcurrentHashMap<String, Method> serviceRegistry;
-    
+
     /*
      * this hashmap contains mappings of cache modifiers to their respective
      * cacheable methods
      */
-    private final ConcurrentHashMap<String,ConcurrentHashMap<String,String>> businessCacheModifiers;
-    
-    private final ConcurrentHashMap<String,String> cacheModifiers;
-    
-    private final ConcurrentHashMap<String,ConcurrentHashMap<String,Long>> businessCachedMethodLastChanged;
-    
+    private final ConcurrentHashMap<String, ConcurrentHashMap<String, ArrayList>> businessCacheModifiers;
+
+    private final ConcurrentHashMap<String, List<String>> cacheModifiers;
+
+    private final ConcurrentHashMap<String, ConcurrentHashMap<String, Long>> businessCachedMethodLastChanged;
 
     private ServletConfig config;
 
@@ -436,7 +437,9 @@ public class Server {
             String externalServices = config.getInitParameter("external-services");
             initExternalServices(externalServices);
             String initType = this.config.getInitParameter("init-type");
-            if (!initType.equals("initial")) return;
+            if (!initType.equals("initial")) {
+                return;
+            }
             SystemAction action2 = new SystemAction("CREATE_USER " + rootUser);
             User user = new User(rootUser, this.getDefaultPassWord(), "localhost", rootUser, action2);
         } catch (Exception ex) {
@@ -490,7 +493,7 @@ public class Server {
      * @param subject contains the subject of the email to be sent
      * @param msgBody this is the message to send
      */
-    public void sendEmail(String[] from, String[] to, String subject,String msgBody) {
+    public void sendEmail(String[] from, String[] to, String subject, String msgBody) {
         String userName = this.config.getInitParameter("sendgrid-username");
         String pass = this.config.getInitParameter("sendgrid-password");
         SendGrid sendgrid = new SendGrid(userName, pass);
@@ -511,7 +514,9 @@ public class Server {
 
     private void grantInitPrivileges(String users, String privileges) {
         String initType = this.config.getInitParameter("init-type");
-        if (!initType.equals("initial")) return;
+        if (!initType.equals("initial")) {
+            return;
+        }
         StringTokenizer privs = new StringTokenizer(privileges, ",");
         StringTokenizer userz = new StringTokenizer(users, ",");
         ArrayList<String> list = new ArrayList();
@@ -588,7 +593,7 @@ public class Server {
                 Endpoint endpoint = method.getAnnotation(Endpoint.class);
                 if (endpoint != null) {
                     String message = endpoint.name();
-                    String [] modifiers = endpoint.cacheModifiers();
+                    String[] modifiers = endpoint.cacheModifiers();
                     String key = message + "_" + serviceClass.getName();
                     String key1 = serviceName + "_" + message;
                     serviceRegistry.put(key, method);
@@ -597,10 +602,7 @@ public class Server {
                         String shareKey = message + "_" + shareWith1; // all_fields_mark_service
                         sharedRegistry.put(shareKey, new Object[]{message, serviceClass.getName()});
                     }
-                    
-                    for (String modifier : modifiers) {
-                        cacheModifiers.put(modifier,key1);//pos_admin_service_create_product : pos_admin_service_all_products
-                    } 
+                    cacheModifiers.put(key1, Arrays.asList(modifiers));//pos_admin_service_all_products : [ pos_admin_service_create_product, pos_admin_service_delete_product]
                 }
             }
         } catch (Exception e) {
@@ -648,6 +650,7 @@ public class Server {
 
     /**
      * this method processes a request by a client for a service
+     *
      * @param worker the id of the client who sent this request
      */
     public void processClientRequest(ClientWorker worker) {
@@ -661,13 +664,15 @@ public class Server {
                     // TODO make more service instances available in future
                     Object serviceInstance = this.runtimeServices.get(location); // we																
                     Serviceable serviceProx = (Serviceable) this.proxify(serviceInstance, worker, service, location);
+                    trackCachedMethods(worker);
                     long beginTime = System.nanoTime();
                     serviceProx.service();
                     long endTime = System.nanoTime();
-                    double duration = (endTime - beginTime)/(Math.pow(10, 9)); //convert to seconds
+                    double duration = (endTime - beginTime) / (Math.pow(10, 9)); //convert to seconds
                     trackUsage(worker, duration);
-                    trackCachedMethods(worker);
                 } catch (Exception e) {
+                    e.printStackTrace();
+                    io.log(e, Level.SEVERE, this.getClass());
                     worker.setResponseData(e);
                     exceptionToClient(worker);
                 }
@@ -676,69 +681,79 @@ public class Server {
                 messageToClient(worker);
             }
         } catch (Exception e) {
+              e.printStackTrace();
+                    io.log(e, Level.SEVERE, this.getClass());
             worker.setResponseData(e);
             exceptionToClient(worker);
         }
     }
-    
- 
-    
+
     private void trackCachedMethods(ClientWorker worker) {
         String key = worker.getService() + "_" + worker.getMessage();
         String busId = worker.getRequestData().optString("business_id");
-        Filter filter = new FilterPredicate("BUSINESS_ID", FilterOperator.EQUAL,busId);
-        ConcurrentHashMap<String, String> businessCache = businessCacheModifiers.get(busId);
-        if(businessCache == null){
-            ConcurrentHashMap modifiers = new ConcurrentHashMap<>();
+        Filter filter = new FilterPredicate("BUSINESS_ID", FilterOperator.EQUAL, busId);
+        ConcurrentHashMap<String, ArrayList> businessCache = businessCacheModifiers.get(busId);
+        if (businessCache == null) {
+            ConcurrentHashMap<String, ArrayList> modifiers = new ConcurrentHashMap<>();
             Iterator iter = cacheModifiers.keySet().iterator();
-            while(iter.hasNext()){
-              String cacheModifier = iter.next().toString();
-              String cacheable = cacheModifiers.get(cacheModifier);
-              modifiers.put(cacheModifier, cacheable);
+            while (iter.hasNext()) {
+                String cacheable = iter.next().toString();
+                List<String> modifierList = cacheModifiers.get(cacheable);
+                for (String mod : modifierList) {
+                    if (modifiers.get(mod) == null) {
+                        ArrayList cacheableList = new ArrayList();
+                        cacheableList.add(cacheable);
+                        modifiers.put(mod, cacheableList);
+                    } else {
+                        modifiers.get(mod).add(cacheable); //pos_admin_service_create_product : [pos_admin_service_all_products,pos_admin_service_product_categories]
+                    }
+                }
             }
-            
+
             businessCacheModifiers.put(busId, modifiers);//load the modifiers for each specific business
-            
+
             ConcurrentHashMap cacheables = new ConcurrentHashMap<>();
             //read from the datastore data about CACHE_LAST_CHANGED values
             Iterable<Entity> multipleEntities = Datastore.getMultipleEntities("CACHE_LAST_CHANGED", filter);
-            for(Entity en : multipleEntities){
-                cacheables.put(en.getProperty("CACHE_KEY"), (Long)en.getProperty("LAST_CHANGED"));
+            for (Entity en : multipleEntities) {
+                cacheables.put(en.getProperty("CACHE_KEY"), (Long) en.getProperty("LAST_CHANGED"));
             }
-            
-            businessCachedMethodLastChanged.put(busId, cacheables); 
-        }
-        else {
-            String cacheable = businessCache.get(key); //if this is not null it means that the key is a cache modifier
+
+            businessCachedMethodLastChanged.put(busId, cacheables);
+        } else {
+            ArrayList<String> cacheableList = businessCache.get(key); //if this is not null it means that the key is a cache modifier
             //so we get the corresponding cacheable for the cache modifier
             long timestamp = System.currentTimeMillis();
-            if (cacheable != null) {
+            if (cacheableList != null) {
                 //the method being currently invoked is a cache modifier
                 //so update the cacheable method as changed
                 ConcurrentHashMap<String, Long> cacheables = businessCachedMethodLastChanged.get(busId);
-                cacheables.put(cacheable, timestamp);
-                //persist to the datastore for future retrieval on application startup
-                Filter filter1 = new FilterPredicate("CACHE_KEY", FilterOperator.EQUAL, cacheable);
-                Entity en = Datastore.getSingleEntity("CACHE_LAST_CHANGED", filter, filter1);
-                if (en == null) {
-                    en = new Entity("CACHE_LAST_CHANGED");
-                    en.setProperty("BUSINESS_ID", busId);
-                    en.setProperty("LAST_CHANGED", timestamp);
-                    en.setProperty("CACHE_KEY", cacheable);
-                    Datastore.insert(en);
-                } else {
-                    en.setProperty("LAST_CHANGED", timestamp);
-                    Datastore.insert(en);
+                for (String cacheable : cacheableList) {
+                    cacheables.put(cacheable, timestamp);
+                    //persist to the datastore for future retrieval on application startup
+                    Filter filter1 = new FilterPredicate("CACHE_KEY", FilterOperator.EQUAL, cacheable);
+                    Entity en = Datastore.getSingleEntity("CACHE_LAST_CHANGED", filter, filter1);
+                    if (en == null) {
+                        en = new Entity("CACHE_LAST_CHANGED");
+                        en.setProperty("BUSINESS_ID", busId);
+                        en.setProperty("LAST_CHANGED", timestamp);
+                        en.setProperty("CACHE_KEY", cacheable);
+                        Datastore.insert(en);
+                    } else {
+                        en.setProperty("LAST_CHANGED", timestamp);
+                        Datastore.insert(en);
+                    }
                 }
+                businessCachedMethodLastChanged.put(busId, cacheables);
             }
         }
-   
     }
-    
-    private void trackUsage(ClientWorker worker,double duration) {
+
+    private void trackUsage(ClientWorker worker, double duration) {
         //check if we are allowed to track usage
         String usageKey = Server.this.config.getInitParameter("track-usage");
         String usageValue = worker.getRequestData().optString(usageKey);
+        usageKey = usageKey.toUpperCase();
         if (usageKey != null) {
             //a usage key was provided
             Filter filter = new FilterPredicate(usageKey, FilterOperator.EQUAL, usageValue);
@@ -917,7 +932,7 @@ public class Server {
             ses.setAttribute("host", uHost);
             ses.setAttribute("clientip", clientIP);
             Entity user = Datastore.getSingleEntity("USERS", "USER_NAME", uName, FilterOperator.EQUAL);
-   
+
             String userId = (String) user.getProperty("USER_ID");
             Long created = (Long) user.getProperty("CREATED");
             String group = (String) user.getProperty("GROUPS");
@@ -929,7 +944,6 @@ public class Server {
             ses.setAttribute("group", group);
             ses.setAttribute("lastlogin", lastLogin);
             ses.setAttribute("sessionstart", sessionStart);
-           
 
             JSONArray userPrivileges = theUser.getUserPrivileges();
             ses.setAttribute("privileges", userPrivileges);
@@ -1040,7 +1054,7 @@ public class Server {
                 messageToClient(worker);
                 return false;
             } else if (isPasswordExpired(Long.parseLong(user.getUserProperty("IS_PASSWORD_EXPIRED")))) {
-                io.log("User password is expired : " + userName, Level.INFO,Server.class);
+                io.log("User password is expired : " + userName, Level.INFO, Server.class);
                 worker.setResponseData("changepass");
                 messageToClient(worker);
                 return false;
@@ -1048,7 +1062,7 @@ public class Server {
                 if (user.getUserProperty("IS_LOGGED_IN").equals("1")) {
                     worker.setResponseData("loggedin");
                     messageToClient(worker);
-                    io.log("User already logged in: " + userName, Level.INFO,Server.class);
+                    io.log("User already logged in: " + userName, Level.INFO, Server.class);
                     return false;
                 }
                 return authenticateUser(user, pass, worker);
@@ -1075,7 +1089,7 @@ public class Server {
             JSONObject object = new JSONObject();
             if (pass_user.equals(pass_stored)) {
                 // mark the user as logged in
-                Datastore.updateSingleEntity("USERS", "USER_NAME", userName,"IS_LOGGED_IN", "1", FilterOperator.EQUAL);
+                Datastore.updateSingleEntity("USERS", "USER_NAME", userName, "IS_LOGGED_IN", "1", FilterOperator.EQUAL);
                 object.put("response", "loginsuccess");
                 object.put("user", userName);
                 object.put("rand", worker.getSession().getId());
@@ -1085,7 +1099,7 @@ public class Server {
                 messageToClient(worker);
                 return true;
             }
-            io.log("Invalid user credentials : " + userName, Level.INFO,Server.class);
+            io.log("Invalid user credentials : " + userName, Level.INFO, Server.class);
             worker.setResponseData("invalidpass");
             messageToClient(worker);
             return false;
@@ -1107,12 +1121,18 @@ public class Server {
         resetTimeout(userName);
         resetLoginAttempts(userName);
     }
-    
+
     //this method checks the status of cacheable methods
     //and injects them in the response
-    private JSONObject injectCacheStatus(String busId){
+    private JSONObject injectCacheStatus(String busId) {
         //key : _cache_status_
-        return new JSONObject(businessCachedMethodLastChanged.get(busId));
+        ConcurrentHashMap<String, Long> cacheStatus = businessCachedMethodLastChanged.get(busId);
+        if(cacheStatus == null){
+            return new JSONObject();
+        }
+        else{
+            return new JSONObject(businessCachedMethodLastChanged.get(busId));
+        }
     }
 
     /**
@@ -1135,7 +1155,7 @@ public class Server {
                 JSONObject object = new JSONObject();
                 object.put("data", worker.getResponseData());
                 object.put("reason", worker.getReason());
-                object.put("_cache_status_",injectCacheStatus(busId));
+                object.put("_cache_status_", injectCacheStatus(busId));
                 worker.toClient(object);
             } else if (rootWorkerId == null) {
                 // do nothing because we shouldnt propagate
@@ -1146,7 +1166,7 @@ public class Server {
                  * waiting, otherwise bundle up the response and send it
                  */
                 JSONObject data = new JSONObject();
-                data.put("_cache_status_",injectCacheStatus(busId));
+                data.put("_cache_status_", injectCacheStatus(busId));
                 boolean complete = false;
                 ClientWorker[] workers = rootWorkers.get(rootWorkerId);
                 for (ClientWorker theWorker : workers) {
@@ -1198,7 +1218,7 @@ public class Server {
                     object.put("reason", theWorker.getReason());
                     object.put("type", "exception");
                     object.put("ex_reason", obj.getMessage());
-                    data.put(theWorker.getService() + "_"+ theWorker.getMessage(), object);
+                    data.put(theWorker.getService() + "_" + theWorker.getMessage(), object);
                 }
                 if (complete && worker.getPropagateResponse()) {
                     worker.toClient(data);
@@ -1222,7 +1242,9 @@ public class Server {
             String userName = (String) session.getAttribute("username");
             String clientIP = (String) session.getAttribute("clientip");
             String logoutID = (String) session.getAttribute("loginid");
-            if (logoutID == null) return;
+            if (logoutID == null) {
+                return;
+            }
 
             Datastore.updateSingleEntity("USERS", "USER_NAME", userName,
                     "IS_LOGGED_IN", "0", FilterOperator.EQUAL);
@@ -1237,7 +1259,7 @@ public class Server {
             logout.setProperty("CLIENT_IP", clientIP);
             Datastore.insert(logout);
             session.invalidate();
-            io.log("User " + userName + " successfully logged out : "+ userName, Level.INFO, Server.class);
+            io.log("User " + userName + " successfully logged out : " + userName, Level.INFO, Server.class);
         } catch (UnknownHostException ex) {
             java.util.logging.Logger.getLogger(Server.class.getName()).log(
                     Level.SEVERE, null, ex);
@@ -1258,7 +1280,7 @@ public class Server {
      * @param priv the privilege we want to control to
      * @return the object whose access is controlled through a proxy
      */
-    public Object proxify(Object obj, ClientWorker worker, String priv,String clazz) {
+    public Object proxify(Object obj, ClientWorker worker, String priv, String clazz) {
         ClassLoader cl = obj.getClass().getClassLoader();
         return Proxy.newProxyInstance(cl, new Class[]{Serviceable.class},
                 new PrivilegeHandler(obj, this, worker, priv, clazz));
@@ -1275,7 +1297,7 @@ public class Server {
         private String clazz;
         private ClientWorker worker;
 
-        public PrivilegeHandler(Object obj, Server serv, ClientWorker worker,String priv, String clazz) {
+        public PrivilegeHandler(Object obj, Server serv, ClientWorker worker, String priv, String clazz) {
             this.obj = obj;
             this.worker = worker;
             this.priv = priv;
@@ -1287,7 +1309,9 @@ public class Server {
             String message = worker.getMessage(); // all_fields
             String key = message + "_" + serviceName;
             Object[] data = sharedRegistry.get(key);
-            if (data == null) return null;
+            if (data == null) {
+                return null;
+            }
             String methodKey = data[0] + "_" + data[1];
             Method method = serviceRegistry.get(methodKey);
             Object[] shareData = new Object[]{data[0], data[1], method}; // messagename,
@@ -1321,7 +1345,7 @@ public class Server {
                         io.log("[" + uName + "] Service invoked: " + obj.getClass().getSimpleName() + " Method: " + met.getName(), Level.SEVERE, Server.class);
                         return met.invoke(obj, new Object[]{Server.this, worker});
                     } else { //this is a shared method
-                         if (sharedData != null) {
+                        if (sharedData != null) {
                             Object serviceInstance = runtimeServices.get(sharedData[1].toString());
                             Method sharedMethod = (Method) sharedData[2];
                             io.log(" [" + uName + "] Service invoked: " + serviceInstance.getClass().getSimpleName() + " Shared Method: " + sharedMethod.getName(), Level.INFO, Server.class);

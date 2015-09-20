@@ -523,10 +523,10 @@ public class OpenDataService implements Serviceable {
         for (Entity data : bdata) {
             //dont invoice businesses that dont meet the threshhold
             String busId = data.getProperty("ID").toString();
-            Filter filter = new FilterPredicate("business_id", FilterOperator.EQUAL, busId);
+            Filter filter = new FilterPredicate("BUSINESS_ID", FilterOperator.EQUAL, busId);
             Entity stat = Datastore.getSingleEntity("USAGE_STATS", filter);
             JSONObject conf = Datastore.entityToJSON(Datastore.getMultipleEntities("CONF_DATA", filter));
-            Long count = Long.parseLong(stat.getProperty("USAGE_COUNT").toString());
+            Double count = Double.parseDouble(stat.getProperty("CPU_USAGE").toString());
             //check whether stat has been exceeded
             if (count > USAGE_THRESHOLD) { //bill this guy!
                 //create a bill entity
@@ -587,7 +587,7 @@ public class OpenDataService implements Serviceable {
         return allTiers;
     }
     
-    private Float getBillPrice(Long usageCount,ArrayList allTiers,String currency){
+    private Float getBillPrice(Double usageCount,ArrayList allTiers,String currency){
         for (Object allTier : allTiers) {
             Object[] tier = (Object[]) allTier;
             Integer limitOne = Integer.parseInt(tier[1].toString());
@@ -706,6 +706,25 @@ public class OpenDataService implements Serviceable {
             Datastore.insert(en);
         }
         worker.setResponseData(Message.SUCCESS);
+        serv.messageToClient(worker);
+    }
+    
+    @Endpoint(name="current_bill_tier")
+    public void currentBillTier(Server serv, ClientWorker worker) throws JSONException{
+        JSONObject requestData = worker.getRequestData();
+        JSONObject resp = new JSONObject();
+        String busId = requestData.optString("business_id");
+        Filter filter = new FilterPredicate("BUSINESS_ID", FilterOperator.EQUAL, busId);
+        Entity stat = Datastore.getSingleEntity("USAGE_STATS", filter);
+        JSONObject conf = Datastore.entityToJSON(Datastore.getMultipleEntities("CONF_DATA", filter));
+        String currency = conf.optJSONArray("CONF_VALUE").optString(conf.optJSONArray("CONF_KEY").toList().indexOf("billing_currency"));
+        Double usage = Double.parseDouble(stat.getProperty("CPU_USAGE").toString()); 
+        //we need your cpu usage and amount due
+        Float price = getBillPrice(usage,getBillTiers(), currency);
+        resp.put("amount_due", price);
+        resp.put("cpu_usage", usage);
+        resp.put("currency",currency);
+        worker.setResponseData(resp);
         serv.messageToClient(worker);
     }
 }
