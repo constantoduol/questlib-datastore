@@ -150,6 +150,23 @@ public class Datastore {
         PreparedQuery pq = datastore.prepare(query);
         return pq.asIterable();
     }
+    
+    public static Iterable<Entity> getMultipleEntities(String entityName,PropertyProjection[] projs, Filter... filters) {
+        Query query = new Query(entityName);
+        for(PropertyProjection proj : projs){
+            if(proj.getName().equals("*")) continue;
+            query.addProjection(proj);
+        }
+        if (filters.length == 0) {
+
+        } else if (filters.length == 1) {
+            query.setFilter(filters[0]);
+        } else {
+            query.setFilter(CompositeFilterOperator.and(filters));
+        }
+        PreparedQuery pq = datastore.prepare(query);
+        return pq.asIterable();
+    }
 
     public static Iterable<Entity> getMultipleEntities(String entityName, Key key, Filter... filters) {
         Query query = new Query(entityName);
