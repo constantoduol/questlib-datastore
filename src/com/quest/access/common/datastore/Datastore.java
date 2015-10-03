@@ -384,6 +384,25 @@ public class Datastore {
         }
         datastore.put(en);
     }
+    
+    public static void updateMultipeEntities(String entityName, String[] propertyNames, Object[] propertyValues, Filter... filters) {
+        Query query = new Query(entityName);
+        if (filters.length == 0) {
+
+        } else if (filters.length == 1) {
+            query.setFilter(filters[0]);
+        } else {
+            query.setFilter(CompositeFilterOperator.and(filters));
+        }
+        PreparedQuery pq = datastore.prepare(query);
+        Iterable<Entity> iter = pq.asIterable();
+        for(Entity en : iter){
+            for (int x = 0; x < propertyNames.length; x++) {
+                en.setProperty(propertyNames[x], propertyValues[x]);
+            }
+            datastore.put(en);
+        }
+    }
 
     public static void updateMultipeEntities(String entityName, String primaryKey, String primaryKeyValue, String propertyName, Object propertyValue, FilterOperator filterOperator) {
         Filter filter = new FilterPredicate(primaryKey, filterOperator, primaryKeyValue);

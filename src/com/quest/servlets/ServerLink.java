@@ -9,7 +9,10 @@ import com.quest.access.control.Server;
 import com.quest.access.useraccess.Service;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.StringTokenizer;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -21,6 +24,7 @@ import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 
@@ -46,18 +50,50 @@ public class ServerLink extends HttpServlet {
             response.setContentType("text/html;charset=UTF-8");
             response.setHeader("Access-Control-Allow-Origin", "*");
             String json = request.getParameter("json");
-            if (json == null) return;
             HttpSession session = request.getSession();
             //session, request, response
-            JSONObject obj = new JSONObject(json);
-            JSONObject headers = obj.optJSONObject("request_header");
-            String msg = headers.optString("request_msg");
-            String sessionId = headers.optString("session_id");
-            
+            JSONObject obj = new JSONObject();
+            JSONObject requestData;
+            String msg,sessionId,service;
+            if (json != null) { //here we are dealing with json
+                obj = new JSONObject(json);
+                JSONObject headers = obj.optJSONObject("request_header");
+                msg = headers.optString("request_msg");
+                sessionId = headers.optString("session_id");
+                service = headers.optString("request_svc");
+                requestData = (JSONObject) obj.optJSONObject("request_object");
+            }
+            else { //here we are dealing with a url string e.g name=me&age=20
+                //json is null check for other parameters and build the required 
+                //request
+                //check for svc, msg, ses_id
+                service = request.getParameter("svc");
+                msg = request.getParameter("msg");
+                sessionId = request.getParameter("ses_id");
+                Map<String, String[]> paramz = request.getParameterMap();
+                HashMap<String, String[]> params = new HashMap(paramz);
+                params.remove("svc");
+                params.remove("msg");
+                params.remove("ses_id");
+                Iterator iter = params.keySet().iterator();
+                while(iter.hasNext()){
+                    String key = iter.next().toString();
+                    String [] param = params.get(key);
+                    if(param.length == 1){
+                        obj.put(key, param[0]);
+                    }
+                    else {
+                        JSONArray arr = new JSONArray();
+                        for(String value : param){
+                            arr.put(value);
+                        }
+                       obj.put(key, arr);
+                    }
+                }
+                requestData = obj;
+            }
             ConcurrentHashMap<String, HttpSession> sessions = Server.getUserSessions();
             boolean authValid = sessionId != null && sessions.containsKey(sessionId);
-            String service = headers.optString("request_svc");
-            JSONObject requestData = (JSONObject) obj.optJSONObject("request_object");
             ClientWorker worker = new ClientWorker(msg, service, requestData, session, response, request);
             if (!authRequired(service, worker) || authValid) {
                 worker.work();
