@@ -122,7 +122,11 @@ public class Datastore {
         Filter filter = new FilterPredicate(propertyName, filterOperator, value);
         Query query = new Query(entityName).setFilter(filter);
         PreparedQuery pq = datastore.prepare(query);
-        return pq.asSingleEntity();
+        try {
+            return pq.asSingleEntity();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public static Entity getSingleEntity(String entityName, Filter... filters) {
@@ -135,7 +139,12 @@ public class Datastore {
             query.setFilter(CompositeFilterOperator.and(filters));
         }
         PreparedQuery pq = datastore.prepare(query);
-        return pq.asSingleEntity();
+        try{
+            return pq.asSingleEntity();
+        }
+        catch(Exception e){
+            return null;
+        }
     }
 
     public static Iterable<Entity> getMultipleEntities(String entityName, Filter... filters) {

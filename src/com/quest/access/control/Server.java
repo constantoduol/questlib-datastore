@@ -670,6 +670,7 @@ public class Server {
                     long endTime = System.nanoTime();
                     double duration = (endTime - beginTime) / (Math.pow(10, 9)); //convert to seconds
                     trackUsage(worker, duration);
+                    io.log("service : "+service+" message : "+worker.getMessage()+" duration : "+duration, Level.SEVERE,this.getClass());
                 } catch (Exception e) {
                     e.printStackTrace();
                     io.log(e, Level.SEVERE, this.getClass());

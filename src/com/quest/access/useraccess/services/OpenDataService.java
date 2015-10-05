@@ -51,13 +51,14 @@ public class OpenDataService implements Serviceable {
 
     private static final String NEXT_URL = "http://uza.questpico.com";
 
-    private static final long USAGE_THRESHOLD = 300; //a business with more than 300 requests a month is charged
+    private static final long USAGE_THRESHOLD = 50; //a business with more than 50 weighted seconds a month is charged
     
-    private static final String[] BILL_TIERS = new String[]{"301-500","501-700","701-900","901-1400","1401-2000","2001-3000",
-                                                            "3001-5000","5001-7000","7001-10000","10001-50000","50001-100000"};
-    private static final String[] BILL_PRICES = new String[]{"500","700","900","1200","1500","2000","3000","5000","7000","10000","30000"};
+    private static final String[] BILL_TIERS = new String[]{"51-150","151-300","301-450","451-600","601-900","901-1200",
+                                                            "1201-1800","1801-3000","3001-4200","4201-6000","6001-12000"};
     
-    private static final String[] BILL_PRICES_DOLLAR = new String[]{"5","7","9","12","15","20","30","50","70","100","300"};
+    private static final String[] BILL_PRICES = new String[]{"500","1000","1500","2000","3000","4000","6000","8000","10000","20000","40000"};
+    
+    private static final String[] BILL_PRICES_DOLLAR = new String[]{"5","10","15","20","30","40","60","80","100","200","400"};
     
     private static final String[] BILL_TIER_NAMES = new String[]{"TIER1","TIER2","TIER3","TIER4","TIER5","TIER6","TIER7","TIER8","TIER9","TIER10","TIER11"};
 
@@ -508,9 +509,8 @@ public class OpenDataService implements Serviceable {
     public void invoiceAccounts(Server serv, ClientWorker worker) {
         JSONObject requestData = worker.getRequestData();
         String key = requestData.optString("key");
-        if (!key.equals("fwgifgy33hfdegegef")) {
-            return; //no false triggers
-        }
+        if (!key.equals("fwgifgy33hfdegegef")) return; //no false triggers
+        
         io.out("Invoicing accounts");
     	//the strategy is to go through the users and check if a user is a 
         //business owner. if a user is a business owner send an invoice to 
@@ -526,9 +526,9 @@ public class OpenDataService implements Serviceable {
             Filter filter = new FilterPredicate("BUSINESS_ID", FilterOperator.EQUAL, busId);
             Entity stat = Datastore.getSingleEntity("USAGE_STATS", filter);
             JSONObject conf = Datastore.entityToJSON(Datastore.getMultipleEntities("CONF_DATA", filter));
-            Double count = Double.parseDouble(stat.getProperty("CPU_USAGE").toString());
+            Double cpuUsage = Double.parseDouble(stat.getProperty("CPU_USAGE").toString());
             //check whether stat has been exceeded
-            if (count > USAGE_THRESHOLD) { //bill this guy!
+            if (cpuUsage > USAGE_THRESHOLD) { //bill this guy!
                 //create a bill entity
                 String transId = new UniqueRandom(20).nextMixedRandom();
                 String busName = data.getProperty("BUSINESS_NAME").toString();
@@ -536,12 +536,25 @@ public class OpenDataService implements Serviceable {
                 en2.setProperty("BUSINESS_ID", busId);
                 en2.setProperty("TRANS_ID", transId);
                 en2.setProperty("TIMESTAMP", System.currentTimeMillis());
+                
                 String currency = conf.optJSONArray("CONF_VALUE").optString(conf.optJSONArray("CONF_KEY").toList().indexOf("billing_currency"));
-                Float billAmount = getBillPrice(count, billTiers,currency);
+                Float billAmount = getBillPrice(cpuUsage, billTiers,currency);
                 en2.setProperty("AMOUNT",billAmount);
                 en2.setProperty("TRAN_TYPE", "0"); //1 for credit 0 for debit
                 en2.setProperty("SENDER_SERVICE", "Quest Invoice");
                 Datastore.insert(en2);
+                
+                //reset the usage stats for this business and record them in usage history
+                Entity usageHistory = new Entity("USAGE_HISTORY");
+                usageHistory.setPropertiesFrom(stat);
+                usageHistory.setProperty("CREATED",System.currentTimeMillis());
+                Datastore.insert(usageHistory);
+                //reset usage stats for this business to zero
+                stat.setProperty("CPU_USAGE",0.0);
+                stat.setProperty("USAGE_COUNT", 0);
+                Datastore.insert(stat);
+                
+                
                 calculateAccountBalance(busId);//calculate new account balance
 
                 String ownerMail = data.getProperty("BUSINESS_OWNER").toString();
