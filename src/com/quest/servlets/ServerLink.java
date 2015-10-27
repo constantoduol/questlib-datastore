@@ -172,7 +172,7 @@ public class ServerLink extends HttpServlet {
      */ 
     @Override
     public String getServletInfo() {
-        return "Short description";
+        return "Entry point to the server";
     }// </editor-fold>
     
     @Override 
