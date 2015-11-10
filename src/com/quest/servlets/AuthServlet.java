@@ -4,6 +4,7 @@
  */
 package com.quest.servlets;
 
+import com.quest.access.common.io;
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -58,6 +59,13 @@ public class AuthServlet extends HttpServlet {
         }
     }
     
+    private String getURI(HttpServletRequest request){
+        String uri = request.getScheme() + "://" + // "http" + "://
+                request.getServerName() + // "myhost"
+                ":" + // ":"
+                request.getServerPort();// "8080"
+        return uri;
+    }
     
     private void doChangeAuth(HttpServletRequest req,HttpServletResponse resp){
         try {
@@ -73,8 +81,7 @@ public class AuthServlet extends HttpServlet {
       	rObject.put("new_password",newpass);
       	obj.put("request_header",rHeader);
       	obj.put("request_object", rObject);
-          
-      	JSONObject remote = sendRemoteData(obj,"http://localhost:8888/web/server");
+      	JSONObject remote = sendRemoteData(obj,getURI(req)+"/server");
       	String response = remote.optJSONObject("response").optString("response");
       	writeChangePass(resp,remote.toString());
       	
@@ -96,8 +103,8 @@ public class AuthServlet extends HttpServlet {
     	rObject.put("password",pass);
     	obj.put("request_header",rHeader);
     	obj.put("request_object", rObject);
-        
-    	JSONObject remote = sendRemoteData(obj,"http://localhost:8888/web/server");
+        io.out(getURI(req));
+    	JSONObject remote = sendRemoteData(obj,getURI(req)+"/server");
     	String response = remote.optJSONObject("response").optString("response");
     	writeLogin(resp,remote.toString());
     	
@@ -194,7 +201,7 @@ public class AuthServlet extends HttpServlet {
 		writer.println("</style>");
 		writer.println("</head>");
 		writer.println("<body style='padding-top: 50px'>");
-		writer.println("<form method='POST' action='/web/auth?type=auth'>");
+		writer.println("<form method='POST' action='/auth?type=auth'>");
 		writer.println("<div class='login-form'>");
 		writer.println("<h3>Login</h3>");
 		writer.println("<label>Username</label>");
@@ -206,7 +213,7 @@ public class AuthServlet extends HttpServlet {
 		writer.println("<div style='clear: both'></div><br>");
 		writer.println("<footer>");
 		writer.println("<label style='color : red;'>"+msg+"</label><br>");
-		writer.println("<a href='/web/auth?type=change'>Change Password</a>");
+		writer.println("<a href='/auth?type=change'>Change Password</a>");
 		writer.println("<div style='clear: both'></div>");
 		writer.println("</footer>");
 		writer.println("</div>");
@@ -282,7 +289,7 @@ public class AuthServlet extends HttpServlet {
   		writer.println("</style>");
   		writer.println("</head>");
   		writer.println("<body style='padding-top: 50px'>");
-  		writer.println("<form method='POST' action='/web/auth?type=change_auth'>");
+  		writer.println("<form method='POST' action='/auth?type=change_auth'>");
   		writer.println("<div class='login-form'>");
   		writer.println("<h3>Change Password</h3>");
   		writer.println("<label>Username</label><br>");

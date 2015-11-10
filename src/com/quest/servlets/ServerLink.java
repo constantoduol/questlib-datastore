@@ -63,7 +63,8 @@ public class ServerLink extends HttpServlet {
                 service = headers.optString("request_svc");
                 requestData = (JSONObject) obj.optJSONObject("request_object");
             }
-            else { //here we are dealing with a url string e.g name=me&age=20
+            else { 
+                //here we are dealing with a url string e.g name=me&age=20
                 //json is null check for other parameters and build the required 
                 //request
                 //check for svc, msg, ses_id

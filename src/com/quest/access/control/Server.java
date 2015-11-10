@@ -1126,6 +1126,7 @@ public class Server {
     //and injects them in the response
     private JSONObject injectCacheStatus(String busId) {
         //key : _cache_status_
+        if(busId == null) return new JSONObject();
         ConcurrentHashMap<String, Long> cacheStatus = businessCachedMethodLastChanged.get(busId);
         if(cacheStatus == null){
             return new JSONObject();
@@ -1331,7 +1332,7 @@ public class Server {
                 uName = (String) ses.getAttribute("username");
                 JSONArray privileges = (JSONArray) ses.getAttribute("privileges");
                 String rGroup = this.priv;
-                permContains = privileges.toList().contains(rGroup); // privilege
+                permContains = privileges != null && privileges.toList().contains(rGroup); // privilege
             } else {
                 uName = "anonymous";
             }

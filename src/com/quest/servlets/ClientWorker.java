@@ -187,8 +187,9 @@ public class ClientWorker {
         this.requestData = data;
     }
 
-    public void setResponseData(Object data) {
+    public ClientWorker setResponseData(Object data) {
         this.responseData = data;
+        return this;
     }
 
     /**

@@ -62,6 +62,14 @@ public class Datastore {
         }
         datastore.put(entity);
     }
+    
+    public static void insert(String entityName, List<String> props, List<Object> values) {
+        Entity entity = new Entity(entityName);
+        for (int x = 0; x < props.size(); x++) {
+            entity.setProperty(props.get(x), values.get(x));
+        }
+        datastore.put(entity);
+    }
 
     public static void insert(String entityName, String primaryValue, String[] props, Object[] values) {
         Key key = KeyFactory.createKey(entityName, primaryValue);
@@ -535,6 +543,18 @@ public class Datastore {
         }
         Entity entityStat = datastore.prepare(query).asSingleEntity();
         return (Long) entityStat.getProperty("count");  
+    }
+    
+    public static ArrayList<String> getEntityPropNames(String entityName){
+        List<Entity> list = Datastore.getAllEntitiesAsList(entityName, FetchOptions.Builder.withLimit(1));
+        if(list != null && list.size() > 0){
+            Entity en = list.get(0);
+            Map<String, Object> properties = en.getProperties();
+            return new ArrayList(properties.keySet());
+        }
+        else {
+            return new ArrayList<>();
+        }
     }
     
     
