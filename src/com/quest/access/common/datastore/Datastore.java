@@ -1,5 +1,6 @@
 package com.quest.access.common.datastore;
 
+import com.google.appengine.api.datastore.DatastoreApiHelper;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -25,6 +26,7 @@ import com.google.appengine.api.datastore.Query.FilterPredicate;
 import com.google.appengine.api.datastore.Query.SortDirection;
 import com.google.appengine.api.datastore.QueryResultList;
 import com.quest.access.common.io;
+import java.util.Arrays;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.json.JSONException;
@@ -62,7 +64,7 @@ public class Datastore {
         }
         datastore.put(entity);
     }
-    
+
     public static void insert(String entityName, List<String> props, List<Object> values) {
         Entity entity = new Entity(entityName);
         for (int x = 0; x < props.size(); x++) {
@@ -151,10 +153,9 @@ public class Datastore {
             query.setFilter(CompositeFilterOperator.and(filters));
         }
         PreparedQuery pq = datastore.prepare(query);
-        try{
+        try {
             return pq.asSingleEntity();
-        }
-        catch(Exception e){
+        } catch (Exception e) {
             return null;
         }
     }
@@ -171,11 +172,13 @@ public class Datastore {
         PreparedQuery pq = datastore.prepare(query);
         return pq.asIterable();
     }
-    
-    public static Iterable<Entity> getMultipleEntities(String entityName,PropertyProjection[] projs, Filter... filters) {
+
+    public static Iterable<Entity> getMultipleEntities(String entityName, PropertyProjection[] projs, Filter... filters) {
         Query query = new Query(entityName);
-        for(PropertyProjection proj : projs){
-            if(proj.getName().equals("*")) continue;
+        for (PropertyProjection proj : projs) {
+            if (proj.getName().equals("*")) {
+                continue;
+            }
             query.addProjection(proj);
         }
         if (filters.length == 0) {
@@ -236,7 +239,6 @@ public class Datastore {
         PreparedQuery pq = datastore.prepare(query);
         return pq.asIterable();
     }
-    
 
     public static List<Entity> getMultipleEntitiesAsList(String entityName, String sortProperty, SortDirection direction, Filter... filters) {
         Query query = new Query(entityName);
@@ -265,12 +267,12 @@ public class Datastore {
         PreparedQuery pq = datastore.prepare(query);
         return options == null ? pq.asQueryResultList(FetchOptions.Builder.withDefaults()) : pq.asQueryResultList(options);
     }
-    
+
     public static JSONObject getPaginatedEntities(String entityName, String sortProperty, SortDirection direction, FetchOptions options, Filter... filters) {
         try {
             Query query = new Query(entityName);
             if (filters.length == 0) {
-                
+
             } else if (filters.length == 1) {
                 query.setFilter(filters[0]);
             } else {
@@ -281,14 +283,14 @@ public class Datastore {
             QueryResultList<Entity> resultList = pq.asQueryResultList(options);
             JSONObject data = new JSONObject();
             data.put("cursor", resultList.getCursor().toWebSafeString());
-            data.put("data",entityToJSON(resultList));
+            data.put("data", entityToJSON(resultList));
             return data;
         } catch (JSONException ex) {
             Logger.getLogger(Datastore.class.getName()).log(Level.SEVERE, null, ex);
             return null;
         }
     }
-    
+
     public static QueryResultList<Entity> getMultipleEntities(String entityName, FetchOptions options, Filter... filters) {
         Query query = new Query(entityName);
         if (filters.length == 0) {
@@ -308,8 +310,8 @@ public class Datastore {
         PreparedQuery pq = datastore.prepare(query);
         return pq.asIterable();
     }
-    
-    public static Iterable<Entity> getEntities(Query q){
+
+    public static Iterable<Entity> getEntities(Query q) {
         PreparedQuery pq = datastore.prepare(q);
         return pq.asIterable();
     }
@@ -373,7 +375,7 @@ public class Datastore {
         PreparedQuery pq = datastore.prepare(query);
         return pq.asIterable(options);
     }
-    
+
     public static List<Entity> getAllEntitiesAsList(String entityName, FetchOptions options) {
         Query query = new Query(entityName);
         PreparedQuery pq = datastore.prepare(query);
@@ -385,8 +387,8 @@ public class Datastore {
         PreparedQuery pq = datastore.prepare(query);
         return pq.asIterable();
     }
-    
-    public static Iterable<Entity> getAllEntities(String entityName,String sortProperty,SortDirection direction) {
+
+    public static Iterable<Entity> getAllEntities(String entityName, String sortProperty, SortDirection direction) {
         Query query = new Query(entityName);
         query.addSort(sortProperty, direction);
         PreparedQuery pq = datastore.prepare(query);
@@ -435,7 +437,7 @@ public class Datastore {
         }
         datastore.put(en);
     }
-    
+
     public static void updateMultipeEntities(String entityName, String[] propertyNames, Object[] propertyValues, Filter... filters) {
         Query query = new Query(entityName);
         if (filters.length == 0) {
@@ -447,7 +449,7 @@ public class Datastore {
         }
         PreparedQuery pq = datastore.prepare(query);
         Iterable<Entity> iter = pq.asIterable();
-        for(Entity en : iter){
+        for (Entity en : iter) {
             for (int x = 0; x < propertyNames.length; x++) {
                 en.setProperty(propertyNames[x], propertyValues[x]);
             }
@@ -499,8 +501,8 @@ public class Datastore {
             datastore.delete(en.getKey());
         }
     }
-    
-    public static void deleteMultipleEntities(String entityName,Filter...filters){
+
+    public static void deleteMultipleEntities(String entityName, Filter... filters) {
         Query query = new Query(entityName);
         if (filters.length == 0) {
 
@@ -510,7 +512,7 @@ public class Datastore {
             query.setFilter(CompositeFilterOperator.and(filters));
         }
         PreparedQuery pq = datastore.prepare(query);
-        for(Entity en : pq.asIterable()){
+        for (Entity en : pq.asIterable()) {
             datastore.delete(en.getKey());
         }
     }
@@ -531,9 +533,9 @@ public class Datastore {
             datastore.delete(en.getKey());
         }
     }
-    
-    public static Long getCount(String entity,Filter ... filters){
-        Query query = new Query("__Stat_"+entity+"__");
+
+    public static Long getCount(String entity, Filter... filters) {
+        Query query = new Query("__Stat_" + entity + "__");
         if (filters.length == 0) {
 
         } else if (filters.length == 1) {
@@ -542,162 +544,118 @@ public class Datastore {
             query.setFilter(CompositeFilterOperator.and(filters));
         }
         Entity entityStat = datastore.prepare(query).asSingleEntity();
-        return (Long) entityStat.getProperty("count");  
+        return (Long) entityStat.getProperty("count");
     }
-    
-    public static ArrayList<String> getEntityPropNames(String entityName){
+
+    public static ArrayList<String> getEntityPropNames(String entityName) {
         List<Entity> list = Datastore.getAllEntitiesAsList(entityName, FetchOptions.Builder.withLimit(1));
-        if(list != null && list.size() > 0){
+        if (list != null && list.size() > 0) {
             Entity en = list.get(0);
             Map<String, Object> properties = en.getProperties();
             return new ArrayList(properties.keySet());
-        }
-        else {
+        } else {
             return new ArrayList<>();
         }
     }
-    
-    
 
     public static FilterOperator getFilterOperator(String operator) {
         FilterOperator op = null;
-        if (operator.equals("=")) {
-            op = FilterOperator.EQUAL;
-        } else if (operator.equals(">")) {
-            op = FilterOperator.GREATER_THAN;
-        } else if (operator.equals(">=")) {
-            op = FilterOperator.GREATER_THAN_OR_EQUAL;
-        } else if (operator.equals("<")) {
-            op = FilterOperator.LESS_THAN;
-        } else if (operator.equals("<=")) {
-            op = FilterOperator.LESS_THAN_OR_EQUAL;
-        } else if (operator.equals("!=")) {
-            op = FilterOperator.NOT_EQUAL;
+        switch (operator) {
+            case "=":
+                op = FilterOperator.EQUAL;
+                break;
+            case ">":
+                op = FilterOperator.GREATER_THAN;
+                break;
+            case ">=":
+                op = FilterOperator.GREATER_THAN_OR_EQUAL;
+                break;
+            case "<":
+                op = FilterOperator.LESS_THAN;
+                break;
+            case "<=":
+                op = FilterOperator.LESS_THAN_OR_EQUAL;
+                break;
+            case "!=":
+                op = FilterOperator.NOT_EQUAL;
+                break;
         }
         return op;
     }
-//
-//    public static List<Entity> joinQuery(String[] entityNames, String[] joinProps, String[] sortProps, SortDirection[] dirs, Filter[][] filters) {
-//	   //fetch the entities we wish to join on
-//        //STOCK_DATA, USER_ACTIONS, PRODUCT_DATA, STOCK_DATA
-//        //ID, ACTION_ID, ID, PRODUCT_ID
-//        //join recursively
-//        //we can only compare two properties at a time
-//        ArrayList<Entity> list = new ArrayList<>();
-//        HashMap<String, List<Entity>> allEntities = new HashMap<>();
-//
-//        for (int x = 0; x < entityNames.length; x++) {
-//            //do not fetch from datastore if we already have the entity
-//            List<Entity> entities;
-//            if (sortProps != null && sortProps[x] != null) {
-//                entities = Datastore.getMultipleEntitiesAsList(entityNames[x], sortProps[x], dirs[x], filters[x]);
-//            } else {
-//                entities = Datastore.getMultipleEntitiesAsList(entityNames[x], filters[x]);
-//            }
-//
-//            allEntities.put(entityNames[x], entities);
-//        }
-//
-//	   //at this point we have all the data
-//        //we can only compare two entities at a time
-//        int length = joinProps.length / 2;
-//
-//        for (int x = 0; x < length; x = x + 2) {
-//            for (int y = x; y < length; y = y + 2) {
-//                String entityName = entityNames[y];
-//                String entityName1 = entityNames[y + 1];
-//
-//                List<Entity> entitiesOne = allEntities.get(entityName);
-//                List<Entity> entitiesTwo = allEntities.get(entityName1);
-//
-//		       //compare two entities on given properties at a time
-//                //PRODUCT_DATA and STOCK_DATA on ID and PRODUCT_ID
-//                //then USER_ACTIONS and STOCK_DATA on ACTION_ID and ID
-//                //go through the largest list comparing on the joinProperties
-//                ArrayList<Object> keys = new ArrayList<>(); //keys and values for the longest
-//                ArrayList<Entity> values = new ArrayList<>();
-//                HashMap<Object, Entity> map = new HashMap<>();
-//                for (int z = 0; z < entitiesOne.size(); z++) {
-//                    Entity en = entitiesOne.get(z);
-//                    keys.add(en.getProperty(joinProps[y])); //allow duplicates
-//                    values.add(en);
-//                }
-//
-//                for (int m = 0; m < entitiesTwo.size(); m++) {
-//                    Entity en = entitiesTwo.get(m);
-//                    map.put(en.getProperty(joinProps[y + 1]), en);
-//                }
-//
-//                for (int i = 0; i < keys.size(); i++) {
-//                    Object key = keys.get(i);
-//                    Entity en = values.get(i);
-//                    Entity en1 = map.get(key);
-//                    if (en != null && en1 != null) {
-//                        Iterator<String> iter = en1.getProperties().keySet().iterator();
-//                        while (iter.hasNext()) {
-//                            String prop = iter.next();
-//                            if (en.getProperty(prop) == null) { //if this property does not exist
-//                                en.setProperty(prop, en1.getProperty(prop));
-//                            }
-//                        }
-//
-//                    }
-//
-//                    list.add(en);
-//                }
-//
-//                //join the maps
-//            }
-//            if (length < joinProps.length) {
-//                length = length * 2;
-//            }
-//        }
-//        
-//        return list;
-//    }
-//    
-    public static List<Entity> twoWayJoin(String[] entityNames, String[] joinProps, String[] sortProps, SortDirection[] dirs, Filter[] filters1, Filter[] filters2) {
-            List<Entity> joined = new ArrayList();
-            Iterable<Entity> entitiesOne = sortProps != null && sortProps[0] != null
-                    ? Datastore.getMultipleEntities(entityNames[0], sortProps[0], dirs[0], filters1)
-                    : Datastore.getMultipleEntities(entityNames[0], filters1);
 
-            Iterable<Entity> entitiesTwo = sortProps != null && sortProps[1] != null
-                    ? Datastore.getMultipleEntities(entityNames[1], sortProps[1], dirs[1], filters2)
-                    : Datastore.getMultipleEntities(entityNames[1], filters2);
+
+    //copies properties from entity two to entity one without overwriting 
+    //those that already exist in entity one
+    private static Entity safeCopyProperties(Entity one, Entity two, String kind1, String kind2) {
+        Map<String, Object> properties2 = two.getProperties();
+        Iterator<String> iterator = properties2.keySet().iterator();
+        while (iterator.hasNext()) {
+            String propName2 = iterator.next();
+            Object propValue2 = properties2.get(propName2);
+            if (one.getProperty(propName2) == null) { //property does not exist so it is safe to copy
+                one.setProperty(propName2, propValue2);
+            } else {
+                //this property already exists and we cannot overwrite it
+//                io.out(kind2 + " : " + propName2);
+//                Object propValue1 = one.getProperty(propName2);
+//                //check that we havent prefixed before
+//                if (!(propName2.startsWith(kind2) || propName2.startsWith(kind1))) {
+//                    one.setProperty(kind2 + "_" + propName2, propValue2);//overwrite
+//                }
+//
+//                if (!(propName2.startsWith(kind2) || propName2.startsWith(kind1))) {
+//                    one.setProperty(kind1 + "_" + propName2, propValue1);//give it a new name
+//                }
+//                one.removeProperty(propName2); //remove this property
+            }
+        }
+        return one;
+    }
+
+    public static List<Entity> twoWayJoin(String[] entityNames, String[] joinProps, String[] sortProps, SortDirection[] dirs, Filter[] filters1, Filter[] filters2) {
+        List<Entity> joined = new ArrayList();
+        Iterable<Entity> entitiesOne = sortProps != null && sortProps[0] != null
+                ? Datastore.getMultipleEntities(entityNames[0], sortProps[0], dirs[0], filters1)
+                : Datastore.getMultipleEntities(entityNames[0], filters1);
+
+        Iterable<Entity> entitiesTwo = sortProps != null && sortProps[1] != null
+                ? Datastore.getMultipleEntities(entityNames[1], sortProps[1], dirs[1], filters2)
+                : Datastore.getMultipleEntities(entityNames[1], filters2);
+        //no of comparisons made = maxLength * minLength; for a basic nested loop join
+        for (Entity en1 : entitiesOne) {
+            for (Entity en2 : entitiesTwo) {
+                if (en1.getProperty(joinProps[0]).equals(en2.getProperty(joinProps[1]))) {
+                    //en1.setPropertiesFrom(en2); //copy properties of en2
+                    en1.setPropertiesFrom(en2);
+                    joined.add(en1);
+                }
+            }
+        }
+        //join the two entities one and two
+        //strategy is to iterate on the larger one while doing the join
+        //[Entity1, Entity2, Entity3, Entity4, Entity5]
+        //[Entity6, Entity7, Entity8]
+        //
+        return joined;
+    }
+
+    //this is a two way join
+    public static JSONObject twoWayJoin(String[] entityNames, String[] joinProps, String[] sortProps, SortDirection[] dirs, FetchOptions options1, FetchOptions options2, Filter[] filters1, Filter[] filters2) {
+        try {
+            List<Entity> joined = new ArrayList();
+            QueryResultList<Entity> entitiesOne = sortProps != null && sortProps[0] != null
+                    ? Datastore.getMultipleEntities(entityNames[0], sortProps[0], dirs[0], options1, filters1)
+                    : Datastore.getMultipleEntities(entityNames[0], options1, filters1);
+
+            QueryResultList<Entity> entitiesTwo = sortProps != null && sortProps[1] != null
+                    ? Datastore.getMultipleEntities(entityNames[1], sortProps[1], dirs[1], options2, filters2)
+                    : Datastore.getMultipleEntities(entityNames[1], options2, filters2);
             //no of comparisons made = maxLength * minLength; for a basic nested loop join
             for (Entity en1 : entitiesOne) {
                 for (Entity en2 : entitiesTwo) {
                     if (en1.getProperty(joinProps[0]).equals(en2.getProperty(joinProps[1]))) {
                         en1.setPropertiesFrom(en2); //copy properties of en2
-                        joined.add(en1);
-                    }
-                }
-            }
-            //join the two entities one and two
-            //strategy is to iterate on the larger one while doing the join
-            //[Entity1, Entity2, Entity3, Entity4, Entity5]
-            //[Entity6, Entity7, Entity8]
-            //
-            return joined;
-    }
-    
-    //this is a two way join
-    public static JSONObject twoWayJoin(String [] entityNames, String[] joinProps, String [] sortProps, SortDirection [] dirs,FetchOptions options1,FetchOptions options2,Filter[] filters1,Filter[] filters2 ){
-        try {
-            List<Entity> joined = new ArrayList();
-            QueryResultList<Entity> entitiesOne = sortProps != null && sortProps[0] != null ?
-                    Datastore.getMultipleEntities(entityNames[0], sortProps[0], dirs[0],options1, filters1) :
-                    Datastore.getMultipleEntities(entityNames[0],options1,filters1);
-            
-            QueryResultList<Entity> entitiesTwo = sortProps != null && sortProps[1] != null ?
-                    Datastore.getMultipleEntities(entityNames[1], sortProps[1], dirs[1],options2, filters2) :
-                    Datastore.getMultipleEntities(entityNames[1],options2,filters2);
-            //no of comparisons made = maxLength * minLength; for a basic nested loop join
-            for (Entity en1 : entitiesOne) {
-                for (Entity en2 : entitiesTwo) {
-                    if( en1.getProperty(joinProps[0]).equals(en2.getProperty(joinProps[1])) ){
-                        en1.setPropertiesFrom(en2); //copy properties of en2
+                       // en1 = safeCopyProperties(en1, en2, entityNames[0], entityNames[1]);
                         joined.add(en1);
                     }
                 }
@@ -718,50 +676,60 @@ public class Datastore {
             return null;
         }
     }
-    
-    
-   
+
     //we deal with the two way one and then join with any further result
     //String[] entityNames, String[] joinProps, String[] sortProps, SortDirection[] dirs, Filter[][] filters
-    public static JSONObject multiJoin(String[] entityNames, String[] joinProps, String[] sortProps, SortDirection[] dirs,FetchOptions[] options, Filter[][] filters){
+    public static JSONObject multiJoin(String[] entityNames, String[] joinProps, String[] sortProps, SortDirection[] dirs, FetchOptions[] options, Filter[][] filters) {
         try {
             //we join two entities at a time
             //if a crazy guy provides less than 2 entity names, shout at him...
-            if(entityNames.length < 2) throw new RuntimeException("Insufficient entities for multi join operation");
+            if (entityNames.length % 2 != 0) {
+                throw new RuntimeException("Insufficient entities for multi join operation");
+            }
+            if (joinProps.length % 2 != 0) {
+                throw new RuntimeException("Insufficient join properties for multi join operation");
+            }
             //perform a join operation on the first two operands and join the results
-            
+
             //TABLE_ONE,TABLE_TWO               entitynames
             //ID, ID                            join props
             //PRODUCT_NAME,SUPPLIER_NAME        sort props
             //ASC,ASC                           sort dirs
-            
-            
             //TABLE_ONE,TABLE_TWO,TABLE_THREE, TABLE_FOUR       entitynames
             //ID, ID, ID, ID                                    join props
             //PRODUCT_NAME,SUPPLIER_NAME,CREATED,CREATED        sort props
             //ASC,ASC,ASC,ASC                                   sort dirs
             ArrayList<Entity> multiJoin = new ArrayList<>();
+            ArrayList<List<Entity>> allData = new ArrayList();
             String cursor = "";
-            for(int x = 0; x < entityNames.length; x++){
-                String [] jProps = new String[]{joinProps[x],joinProps[x+1]};
-                String [] sProps = new String[]{sortProps[x],sortProps[x+1]};
-                SortDirection [] dir = new SortDirection[]{dirs[x],dirs[x+1]};
+            for (int x = 0; x <= entityNames.length / 2; x = x + 2) {
+                String[] jProps = new String[]{joinProps[x], joinProps[x + 1]};
+                String[] sProps = sortProps != null ? new String[]{sortProps[x], sortProps[x + 1]} : null;
+                SortDirection[] dir = dirs != null ? new SortDirection[]{dirs[x], dirs[x + 1]} : null;
                 JSONObject resp = twoWayJoin(
-                        new String[]{entityNames[x],
-                            entityNames[x + 1]},
-                        jProps, sProps, dir,options[x],options[x+1], filters[x], filters[x+1]);
-                List<Entity> twoWayJoin = (List)resp.opt("joined");
+                        new String[]{entityNames[x], entityNames[x + 1]},
+                        jProps, sProps, dir, options[x], options[x + 1], filters[x], filters[x + 1]);
+                List<Entity> twoWayJoin = (List) resp.opt("joined");
+                allData.add(twoWayJoin);
                 cursor = resp.optString("cursor");
-                for(int y = 0; y < twoWayJoin.size(); y++){
-                    for(int z = 0; z < multiJoin.size(); z++){
-                        Entity en = twoWayJoin.get(y);
-                        Entity en1 = twoWayJoin.get(z);
-                        en.setPropertiesFrom(en1);
-                        multiJoin.set(z, en);
+            }
+
+            for (List<Entity> twoWay : allData) {
+                for (int y = 0; y < twoWay.size(); y++) {
+                    Entity en = twoWay.get(y);
+                    //String kind = en.getKind();
+                    if (multiJoin.size() < twoWay.size()) {
+                        multiJoin.add(en);//the required properties have not been copied yet
+                    } else {
+                        Entity en1 = multiJoin.get(y);
+                        //join together with the 2 way joins
+                        en1.setPropertiesFrom(en);
+                        //en1 = safeCopyProperties(en1, en, "", kind);
+                        multiJoin.set(y, en1);
                     }
                 }
             }
-            
+
             JSONObject response = new JSONObject();
             response.put("cursor", cursor);
             response.put("data", entityToJSON(multiJoin));
@@ -772,10 +740,59 @@ public class Datastore {
         }
     }
 
-   //we compare two columns/properties on a single entity
+    public static List<Entity> multiJoin(String[] entityNames, String[] joinProps, String[] sortProps, SortDirection[] dirs, Filter[][] filters) {
+        //we join two entities at a time
+        //if a crazy guy provides less than 2 entity names, shout at him...
+        if (entityNames.length % 2 != 0) {
+            throw new RuntimeException("Insufficient entities for multi join operation");
+        }
+        if (joinProps.length % 2 != 0) {
+            throw new RuntimeException("Insufficient join properties for multi join operation");
+        }
+            //perform a join operation on the first two operands and join the results
+
+            //TABLE_ONE,TABLE_TWO               entitynames
+        //ID, ID                            join props
+        //PRODUCT_NAME,SUPPLIER_NAME        sort props
+        //ASC,ASC                           sort dirs
+        //TABLE_ONE,TABLE_TWO,TABLE_THREE, TABLE_FOUR       entitynames
+        //ID, ID, ID, ID                                    join props
+        //PRODUCT_NAME,SUPPLIER_NAME,CREATED,CREATED        sort props
+        //ASC,ASC,ASC,ASC                                   sort dirs
+        ArrayList<Entity> multiJoin = new ArrayList<>();
+        ArrayList<List<Entity>> allData = new ArrayList();
+        for (int x = 0; x <= entityNames.length / 2; x = x + 2) {
+            String[] jProps = new String[]{joinProps[x], joinProps[x + 1]};
+            String[] sProps = sortProps != null ? new String[]{sortProps[x], sortProps[x + 1]} : null;
+            SortDirection[] dir = dirs != null ? new SortDirection[]{dirs[x], dirs[x + 1]} : null;
+            List<Entity> twoWayJoin = twoWayJoin(
+                    new String[]{entityNames[x], entityNames[x + 1]},
+                    jProps, sProps, dir, filters[x], filters[x + 1]);
+            allData.add(twoWayJoin);
+        }
+
+        for (List<Entity> twoWay : allData) {
+            for (int y = 0; y < twoWay.size(); y++) {
+                Entity en = twoWay.get(y);
+                //String kind = en.getKind();
+                if (multiJoin.size() < twoWay.size()) {
+                    multiJoin.add(en);//the required properties have not been copied yet
+                } else {
+                    Entity en1 = multiJoin.get(y);
+                    //join together with the 2 way joins
+                    en1.setPropertiesFrom(en);
+                   // en1 = safeCopyProperties(en1, en, "", kind);
+                    multiJoin.set(y, en1);
+                }
+            }
+        }
+        return multiJoin;
+    }
+
+    //we compare two columns/properties on a single entity
     //fetch the 
     public static List<Entity> compareQuery(String entityName, String propertyOne, String operator, String propertyTwo, Filter... filters) {
-        List<Entity> entities = Datastore.getMultipleEntitiesAsList(entityName,filters);
+        List<Entity> entities = Datastore.getMultipleEntitiesAsList(entityName, filters);
         ArrayList list = new ArrayList();
         for (Entity en : entities) {
             Object one = en.getProperty(propertyOne);
