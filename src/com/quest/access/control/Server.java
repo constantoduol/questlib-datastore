@@ -682,7 +682,7 @@ public class Server {
             }
         } catch (Exception e) {
               e.printStackTrace();
-                    io.log(e, Level.SEVERE, this.getClass());
+              io.log(e, Level.SEVERE, this.getClass());
             worker.setResponseData(e);
             exceptionToClient(worker);
         }
@@ -1360,7 +1360,11 @@ public class Server {
                     // if this fails check to see if there is a service that has shared this method with the currently invoked service
                 } catch (Exception e) {
                     if (Server.this.debugmode) {
-                        e.getCause().printStackTrace();
+                        io.log(e.getCause(), Level.SEVERE, this.getClass());
+                        StackTraceElement[] st = e.getCause().getStackTrace();
+                        for (StackTraceElement st1 : st) {
+                            io.log(st1.toString(), Level.SEVERE, this.getClass());
+                        }
                     }
                 }
             } else {

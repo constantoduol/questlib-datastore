@@ -19,7 +19,7 @@ import java.util.Random;
 public class UniqueRandom implements java.io.Serializable {
     private int digitLength;
     
-    private static final String [] chars=new String []{"a","b","c","d","e","f",
+    private static final String [] chars = new String []{"a","b","c","d","e","f",
                                                        "g","h","i","j","k","l",
                                                        "m","n","o","p","q","r",
                                                        "s","t","u","v","w","x",
@@ -66,7 +66,6 @@ public class UniqueRandom implements java.io.Serializable {
           }
          }
         return buffer.toString();
-        
     }
     
     private int getRandomDigit(){

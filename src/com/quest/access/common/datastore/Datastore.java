@@ -1,6 +1,5 @@
 package com.quest.access.common.datastore;
 
-import com.google.appengine.api.datastore.DatastoreApiHelper;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -25,8 +24,6 @@ import com.google.appengine.api.datastore.Query.FilterOperator;
 import com.google.appengine.api.datastore.Query.FilterPredicate;
 import com.google.appengine.api.datastore.Query.SortDirection;
 import com.google.appengine.api.datastore.QueryResultList;
-import com.quest.access.common.io;
-import java.util.Arrays;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.json.JSONException;
@@ -378,6 +375,13 @@ public class Datastore {
 
     public static List<Entity> getAllEntitiesAsList(String entityName, FetchOptions options) {
         Query query = new Query(entityName);
+        PreparedQuery pq = datastore.prepare(query);
+        return pq.asList(options);
+    }
+    
+    public static List<Entity> getAllEntitiesAsList(String entityName, FetchOptions options,String sortProperty, SortDirection direction) {
+        Query query = new Query(entityName);
+        query.addSort(sortProperty, direction);
         PreparedQuery pq = datastore.prepare(query);
         return pq.asList(options);
     }
@@ -845,6 +849,19 @@ public class Datastore {
         }
         return list;
 
+    }
+    
+    public static boolean exists(String entityName, String [] columns, String [] values){
+        ArrayList<Filter> filters = new ArrayList();
+        for(int x = 0; x < columns.length; x++){
+            Filter filter = new FilterPredicate(columns[x],FilterOperator.EQUAL,values[x]);
+            filters.add(filter);
+        }
+        List<Entity> all = Datastore.getMultipleEntitiesAsList(entityName,filters.toArray(new Filter[filters.size()]));
+        if(all != null && all.size() > 0){
+            return true;
+        }
+        return false;
     }
 
 }
