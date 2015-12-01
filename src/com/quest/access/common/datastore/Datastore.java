@@ -24,6 +24,10 @@ import com.google.appengine.api.datastore.Query.FilterOperator;
 import com.google.appengine.api.datastore.Query.FilterPredicate;
 import com.google.appengine.api.datastore.Query.SortDirection;
 import com.google.appengine.api.datastore.QueryResultList;
+import com.quest.access.common.io;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.json.JSONException;
@@ -586,61 +590,53 @@ public class Datastore {
         }
         return op;
     }
-
-
-    //copies properties from entity two to entity one without overwriting 
-    //those that already exist in entity one
-    private static Entity safeCopyProperties(Entity one, Entity two, String kind1, String kind2) {
-        Map<String, Object> properties2 = two.getProperties();
-        Iterator<String> iterator = properties2.keySet().iterator();
-        while (iterator.hasNext()) {
-            String propName2 = iterator.next();
-            Object propValue2 = properties2.get(propName2);
-            if (one.getProperty(propName2) == null) { //property does not exist so it is safe to copy
-                one.setProperty(propName2, propValue2);
-            } else {
-                //this property already exists and we cannot overwrite it
-//                io.out(kind2 + " : " + propName2);
-//                Object propValue1 = one.getProperty(propName2);
-//                //check that we havent prefixed before
-//                if (!(propName2.startsWith(kind2) || propName2.startsWith(kind1))) {
-//                    one.setProperty(kind2 + "_" + propName2, propValue2);//overwrite
-//                }
-//
-//                if (!(propName2.startsWith(kind2) || propName2.startsWith(kind1))) {
-//                    one.setProperty(kind1 + "_" + propName2, propValue1);//give it a new name
-//                }
-//                one.removeProperty(propName2); //remove this property
-            }
-        }
-        return one;
-    }
-
+    
     public static List<Entity> twoWayJoin(String[] entityNames, String[] joinProps, String[] sortProps, SortDirection[] dirs, Filter[] filters1, Filter[] filters2) {
         List<Entity> joined = new ArrayList();
-        Iterable<Entity> entitiesOne = sortProps != null && sortProps[0] != null
-                ? Datastore.getMultipleEntities(entityNames[0], sortProps[0], dirs[0], filters1)
-                : Datastore.getMultipleEntities(entityNames[0], filters1);
+        List<Entity> entitiesOne = sortProps != null && sortProps[0] != null
+                ? Datastore.getMultipleEntitiesAsList(entityNames[0], sortProps[0], dirs[0], filters1)
+                : Datastore.getMultipleEntitiesAsList(entityNames[0], filters1);
 
-        Iterable<Entity> entitiesTwo = sortProps != null && sortProps[1] != null
-                ? Datastore.getMultipleEntities(entityNames[1], sortProps[1], dirs[1], filters2)
-                : Datastore.getMultipleEntities(entityNames[1], filters2);
+        List<Entity> entitiesTwo = sortProps != null && sortProps[1] != null
+                ? Datastore.getMultipleEntitiesAsList(entityNames[1], sortProps[1], dirs[1], filters2)
+                : Datastore.getMultipleEntitiesAsList(entityNames[1], filters2);
+        
         //no of comparisons made = maxLength * minLength; for a basic nested loop join
-        for (Entity en1 : entitiesOne) {
-            for (Entity en2 : entitiesTwo) {
+        //get longer list
+        //go one by one getting value of join prop on one and compare with that of two
+        //if they are equal join them
+        List<Entity> longerList = entitiesOne.size() > entitiesTwo.size() ? entitiesOne : entitiesTwo;
+        List<Entity> shorterList = entitiesOne.size() < entitiesTwo.size() ? entitiesOne : entitiesTwo;
+        for (Entity longerList1 : longerList) {
+            for (Entity shorterList1 : shorterList) {
+                Entity en1 = longerList1;
+                Entity en2 = shorterList1;
                 if (en1.getProperty(joinProps[0]).equals(en2.getProperty(joinProps[1]))) {
-                    //en1.setPropertiesFrom(en2); //copy properties of en2
                     en1.setPropertiesFrom(en2);
-                    joined.add(en1);
+                    Entity en3 = en1.clone();
+                    joined.add(en3);
                 }
             }
         }
+        
         //join the two entities one and two
         //strategy is to iterate on the larger one while doing the join
         //[Entity1, Entity2, Entity3, Entity4, Entity5]
         //[Entity6, Entity7, Entity8]
         //
         return joined;
+    }
+    
+    public static void main(String [] args){
+        ArrayList a = new ArrayList();
+        a.add(1);
+        a.add(2);
+        a.add(3);
+        ArrayList b = (ArrayList) a.clone();
+        b.set(2, 7);
+        io.out(a);
+        io.out(b);
+        
     }
 
     //this is a two way join
@@ -655,12 +651,16 @@ public class Datastore {
                     ? Datastore.getMultipleEntities(entityNames[1], sortProps[1], dirs[1], options2, filters2)
                     : Datastore.getMultipleEntities(entityNames[1], options2, filters2);
             //no of comparisons made = maxLength * minLength; for a basic nested loop join
-            for (Entity en1 : entitiesOne) {
-                for (Entity en2 : entitiesTwo) {
+            List<Entity> longerList = entitiesOne.size() > entitiesTwo.size() ? entitiesOne : entitiesTwo;
+            List<Entity> shorterList = entitiesOne.size() < entitiesTwo.size() ? entitiesOne : entitiesTwo;
+            for (Entity longerList1 : longerList) { 
+                for (Entity shorterList1 : shorterList) {
+                    Entity en1 = longerList1;
+                    Entity en2 = shorterList1;
                     if (en1.getProperty(joinProps[0]).equals(en2.getProperty(joinProps[1]))) {
-                        en1.setPropertiesFrom(en2); //copy properties of en2
-                       // en1 = safeCopyProperties(en1, en2, entityNames[0], entityNames[1]);
-                        joined.add(en1);
+                        en1.setPropertiesFrom(en2);
+                        Entity en3 = en1.clone();
+                        joined.add(en3);
                     }
                 }
             }
@@ -774,18 +774,16 @@ public class Datastore {
                     jProps, sProps, dir, filters[x], filters[x + 1]);
             allData.add(twoWayJoin);
         }
-
+        
         for (List<Entity> twoWay : allData) {
             for (int y = 0; y < twoWay.size(); y++) {
                 Entity en = twoWay.get(y);
-                //String kind = en.getKind();
                 if (multiJoin.size() < twoWay.size()) {
                     multiJoin.add(en);//the required properties have not been copied yet
                 } else {
                     Entity en1 = multiJoin.get(y);
                     //join together with the 2 way joins
                     en1.setPropertiesFrom(en);
-                   // en1 = safeCopyProperties(en1, en, "", kind);
                     multiJoin.set(y, en1);
                 }
             }
