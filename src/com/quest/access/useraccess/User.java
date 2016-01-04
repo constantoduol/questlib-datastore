@@ -209,7 +209,6 @@ public class User  {
         User user = User.getExistingUser(userName);
         Datastore.deleteSingleEntity("USERS", "USER_ID", user.getUserProperty("USER_ID"), FilterOperator.EQUAL);
         Datastore.deleteSingleEntity("PRIVILEGES", "USER_ID", user.getUserProperty("USER_ID"), FilterOperator.EQUAL);
-
     }
 
     /**

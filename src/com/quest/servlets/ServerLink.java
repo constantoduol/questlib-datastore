@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package com.quest.servlets;
 
 import com.quest.access.common.io;
@@ -9,7 +5,6 @@ import com.quest.access.control.Server;
 import com.quest.access.useraccess.Service;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -19,12 +14,12 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletException;
-import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 
@@ -37,6 +32,9 @@ import org.json.JSONObject;
 public class ServerLink extends HttpServlet {
     
     private static Server server;
+    
+    private static HashMap<String,String> requestMappings;
+    
 
     /** 
      * Processes requests for both HTTP <code>GET</code> and <code>POST</code> methods.
@@ -54,13 +52,15 @@ public class ServerLink extends HttpServlet {
             //session, request, response
             JSONObject obj = new JSONObject();
             JSONObject requestData;
-            String msg,sessionId,service;
+            JSONObject headers = new JSONObject();
+            String msg,sessionId,service,endpoint;
             if (json != null) { //here we are dealing with json
                 obj = new JSONObject(json);
-                JSONObject headers = obj.optJSONObject("request_header");
+                headers = obj.optJSONObject("request_header");
                 msg = headers.optString("request_msg");
                 sessionId = headers.optString("session_id");
                 service = headers.optString("request_svc");
+                endpoint = headers.optString("endpoint");
                 requestData = (JSONObject) obj.optJSONObject("request_object");
             }
             else { 
@@ -71,6 +71,11 @@ public class ServerLink extends HttpServlet {
                 service = request.getParameter("svc");
                 msg = request.getParameter("msg");
                 sessionId = request.getParameter("ses_id");
+                endpoint = request.getParameter("endpoint");
+                headers.put("request_msg", msg);
+                headers.put("session_id", sessionId);
+                headers.put("request_svc", service);
+                headers.put("endpoint", endpoint);
                 Map<String, String[]> paramz = request.getParameterMap();
                 HashMap<String, String[]> params = new HashMap(paramz);
                 params.remove("svc");
@@ -93,10 +98,11 @@ public class ServerLink extends HttpServlet {
                 }
                 requestData = obj;
             }
-            ConcurrentHashMap<String, HttpSession> sessions = Server.getUserSessions();
-            boolean authValid = sessionId != null && sessions.containsKey(sessionId);
-            ClientWorker worker = new ClientWorker(msg, service, requestData, session, response, request);
-            if (!authRequired(service, worker) || authValid) {
+            
+            ClientWorker worker = new ClientWorker(msg, service,headers,requestData, session, response, request,endpoint);
+            worker = resolveRequestMappings(worker); //include endpoints for common functions e.g login,logout
+    
+            if (!authRequired(service, worker) || isAuthValid(sessionId)) {
                 worker.work();
             } else {
                 String value = "to use this service you need a valid auth token";
@@ -105,6 +111,58 @@ public class ServerLink extends HttpServlet {
         } catch (Exception ex) {
             Logger.getLogger(ServerLink.class.getName()).log(Level.SEVERE, null, ex);
         }
+    }
+    
+    private boolean isAuthValid(String sessionId) throws JSONException{
+        ConcurrentHashMap<String, HttpSession> sessions = Server.getUserSessions();
+        return  sessionId != null && sessions.containsKey(sessionId);
+    }
+    
+    //create a mapping between a service and the remote server the service is located
+    private void createRequestMappings(String mappings){
+        HashMap<String,String> allMappings = new HashMap();
+        StringTokenizer st = new StringTokenizer(mappings,",");
+        while(st.hasMoreTokens()){
+            String mapping = st.nextToken();
+            StringTokenizer mt = new StringTokenizer(mapping,"|");
+            int count = 0;
+            String systemName = "";
+            while(mt.hasMoreTokens()){
+                if(count == 0){
+                    systemName = mt.nextToken().trim();
+                }
+                else {
+                    allMappings.put(mt.nextToken().trim(), systemName);
+                }
+                count++;
+            }
+        }
+        requestMappings = allMappings;
+    }
+    
+    private void registerSystems(String sys){
+        ConcurrentHashMap systems = new ConcurrentHashMap();
+        StringTokenizer st = new StringTokenizer(sys,",");
+        while(st.hasMoreTokens()){
+            String system = st.nextToken();
+            int index = system.indexOf("|");
+            String systemName = system.substring(0,index);
+            String endpoint = system.substring(index + 1,system.length());
+            systems.put(systemName.trim(), endpoint.trim());
+        }
+        //io.out(systems);
+        server.setRegisteredSystems(systems);
+    }
+    
+    private ClientWorker resolveRequestMappings(ClientWorker worker){
+        //here we map requests to the corresponding servers
+        //for example account related functions happen at https://quest-accounts.appspot.com
+        //for example finance related functions happen at https://quest-pay.appspot.com
+        //we have bundled all account related functionality in accounts_service and privileged_accounts_service
+        //we have bundled all finance related functionality in payments_service and privileged_payments_service
+        String sysName = requestMappings.get(worker.getService());
+        if(sysName != null) worker.setEndpoint(server.getRegisteredSystems().get(sysName));
+        return worker;
     }
     
     private boolean authRequired(String services, ClientWorker worker) {
@@ -127,8 +185,12 @@ public class ServerLink extends HttpServlet {
         return false;
     }
     
-    
-    
+    /**
+     *
+     * @param response
+     * @param msgKey
+     * @param msgValue
+     */
     public static void sendMessage(HttpServletResponse response,String msgKey, String msgValue){
         try {
             JSONObject object = new JSONObject();  
@@ -138,6 +200,14 @@ public class ServerLink extends HttpServlet {
         } catch (Exception ex) {
             Logger.getLogger(ServerLink.class.getName()).log(Level.SEVERE, null, ex);
         }
+    }
+    
+    public static void main(String [] args){
+        String str = "quest_uza|https://test-quest-uza.appspot.com/server,\n" +
+"                quest_accounts|https://quest-access.appspot.com/server,\n" +
+"                quest_pay|https://quest-pay.appspot.com/server";
+        ServerLink link = new ServerLink();
+        link.registerSystems(str);
     }
  
     // <editor-fold defaultstate="collapsed" desc="HttpServlet methods. Click on the + sign on the left to edit the code.">
@@ -176,19 +246,24 @@ public class ServerLink extends HttpServlet {
         return "Entry point to the server";
     }// </editor-fold>
     
+    /**
+     *
+     */
     @Override 
     public void init(){
          ServletConfig config = getServletConfig();
-         String serverName=config.getInitParameter("database-name");
-         String passExpires=config.getInitParameter("password-expires");
-         String maxRetries=config.getInitParameter("max-password-retries");
-         String clientTimeout=config.getInitParameter("client-timeout");
-         String mLogin=config.getInitParameter("multiple-login");
-         String defPass=config.getInitParameter("default-password");
+         String passExpires = config.getInitParameter("password-expires");
+         String maxRetries = config.getInitParameter("max-password-retries");
+         String clientTimeout = config.getInitParameter("client-timeout");
+         String mLogin = config.getInitParameter("multiple-login");
+         String defPass = config.getInitParameter("default-password");
          String rootUser = config.getInitParameter("root-user");
          String debug = config.getInitParameter("debug-mode");
+         String systemName = config.getInitParameter("system-name");
+         String mappings = config.getInitParameter("request-mappings");
+         String systems = config.getInitParameter("registered-systems");
          try {
-            server = new Server(serverName);
+            server = new Server(systemName);
             if(debug.equals("true")){
                 server.setDebugMode(true);
             }
@@ -203,11 +278,17 @@ public class ServerLink extends HttpServlet {
             server.setDefaultPassWord(defPass);
             server.createRootUser(rootUser);
             server.startAllServices();
+            createRequestMappings(mappings);
+            registerSystems(systems);
         } catch (Exception ex) {
-        	io.log(ex, Level.SEVERE, this.getClass());
-      } 
+            io.log(ex, Level.SEVERE, this.getClass());
+        }
     }
- 
+    
+    /**
+     *
+     * @return
+     */
     public static Server getServerInstance(){
         return server;
     }

@@ -2,8 +2,6 @@ package com.quest.access.control;
 
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -24,7 +22,6 @@ import java.util.logging.Level;
 import javax.servlet.ServletConfig;
 import javax.servlet.http.HttpSession;
 
-import org.apache.commons.io.IOUtils;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -44,8 +41,6 @@ import com.quest.access.useraccess.User;
 import com.quest.access.useraccess.services.annotations.Endpoint;
 import com.quest.access.useraccess.services.annotations.WebService;
 import com.quest.access.useraccess.verification.SystemAction;
-import com.quest.mail.SendGrid;
-import com.quest.mail.SendGridException;
 import com.quest.servlets.ClientWorker;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -215,10 +210,7 @@ public class Server {
      */
     private String defaultPass;
 
-    /*
-     * this is the directory containing extra classes used by this server
-     */
-    private String dir;
+   
     /*
      * this tells us how long user passwords take to expire
      */
@@ -230,10 +222,11 @@ public class Server {
     private boolean multipleLogins;
 
     /*
-     * This is the name of the super group
+     * This is the name of the server
      */
     private String name;
-
+    
+    
     private String rootUser;
 
     /*
@@ -258,6 +251,8 @@ public class Server {
     private final ConcurrentHashMap<String, ConcurrentHashMap<String, Long>> businessCachedMethodLastChanged;
 
     private ServletConfig config;
+    
+    private ConcurrentHashMap<String,String> registeredSystems;
 
     /*
      * contains information about method sharing between services
@@ -323,6 +318,14 @@ public class Server {
         return false;
     }
 
+    public void setRegisteredSystems(ConcurrentHashMap systems){
+        this.registeredSystems = systems;
+    }
+    
+    public ConcurrentHashMap<String,String> getRegisteredSystems(){
+        return registeredSystems;
+    }
+    
     /**
      * this method sets the password life of this server in minutes
      */
@@ -476,40 +479,10 @@ public class Server {
 
     }
 
-    public String getEmailTemplate(String name) {
-        try {
-            InputStream in = getClass().getResourceAsStream("/com/quest/mail/" + name + ".html");
-            return IOUtils.toString(in, "utf-8");
-        } catch (IOException ex) {
-            java.util.logging.Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
-            return "";
-        }
-    }
 
-    /**
-     *
-     * @param from contains the email and preferred name of the sender
-     * @param to contains the email and preferred name of recipient
-     * @param subject contains the subject of the email to be sent
-     * @param msgBody this is the message to send
-     */
-    public void sendEmail(String[] from, String[] to, String subject, String msgBody) {
-        String userName = this.config.getInitParameter("sendgrid-username");
-        String pass = this.config.getInitParameter("sendgrid-password");
-        SendGrid sendgrid = new SendGrid(userName, pass);
-        SendGrid.Email email = new SendGrid.Email();
-        email.addTo(to[0]);
-        email.addToName(to[1]);
-        email.setFrom(from[0]);
-        email.setFromName(from[1]);
-        email.setSubject(subject);
-        email.setHtml(msgBody);
-        try {
-            SendGrid.Response response = sendgrid.send(email);
-            System.out.println(response.getMessage());
-        } catch (SendGridException e) {
-            System.err.println(e);
-        }
+    
+    public long timestamp(){
+        return System.currentTimeMillis();
     }
 
     private void grantInitPrivileges(String users, String privileges) {
@@ -620,8 +593,7 @@ public class Server {
      */
     public static JSONObject remote(Object requestData, String remoteUrl) {
         try {
-            String urlParams = URLEncoder.encode("json", "UTF-8") + "="
-                    + URLEncoder.encode(requestData.toString(), "UTF-8");
+            String urlParams = URLEncoder.encode("json", "UTF-8") + "=" + URLEncoder.encode(requestData.toString(), "UTF-8");
             URL url = new URL(remoteUrl);
             URLConnection conn = url.openConnection();
             conn.setRequestProperty("Accept", "application/json");
@@ -648,13 +620,66 @@ public class Server {
         }
     }
 
+    private void responseInterceptors(ClientWorker worker){
+        String svc = worker.getService();
+        String msg = worker.getMessage();
+        JSONObject response = (JSONObject)worker.getResponseData();
+        JSONObject data = response.optJSONObject("response").optJSONObject("data");
+        if(svc.equals("accounts_service") && msg.equals("login")){
+            try {
+                HttpSession ses = worker.getSession();
+                ses.setAttribute("username", data.optString("user"));
+                ses.setAttribute("host", data.optString("host"));
+                ses.setAttribute("clientip", worker.getRequest().getRemoteAddr());
+                ses.setAttribute("privileges", new JSONArray(data.optString("privileges")));
+                String sesId = worker.getRequestHeader().optString("session_id");
+                sessions.put(sesId, ses);
+            } catch (JSONException ex) {
+                Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
+        else if(svc.equals("accounts_service") && msg.equals("logout")){
+            HttpSession ses = worker.getSession();
+            ses.invalidate();
+        }
+    }
+    
+    private void requestInterceptors(ClientWorker worker){
+        String svc = worker.getService();
+        String msg = worker.getMessage();
+        String sesId = worker.getRequestHeader().optString("session_id");
+        if(svc.equals("accounts_service") && msg.equals("logout")){
+            //we intercept this on a server that is not the accounts 
+            //server to remove a client session
+            sessions.remove(sesId);
+        }
+    }
+    
     /**
      * this method processes a request by a client for a service
      *
-     * @param worker the id of the client who sent this request
+     * @param worker the client who sent this request
      */
     public void processClientRequest(ClientWorker worker) {
         try {
+            //deal with remote requests first before dealing with local
+            //requests. make sure that the endpoint does not point to this server
+            //so that we avoid a cyclic occurrence of sending requests to the same server
+            String serverEndpoint = registeredSystems.get(name);
+            boolean isSameServer = serverEndpoint != null && serverEndpoint.equals(worker.getEndpoint());
+            if(!worker.getEndpoint().isEmpty() && !isSameServer){
+                //if we have a remote url it means the data we want exists elsewhere
+                //on a remote server so fetch it,-->
+                JSONObject request = new JSONObject();
+                request.put("request_header", worker.getRequestHeader());
+                request.put("request_object", worker.getRequestData());
+                requestInterceptors(worker);
+                JSONObject remoteData = remote(request,worker.getEndpoint());
+                worker.setResponseData(remoteData);
+                messageToClient(worker);
+                responseInterceptors(worker);
+                return;
+            }
             HashMap serviceList = Server.services;
             String service = worker.getService();
             ArrayList values = (ArrayList) serviceList.get(service);
@@ -671,7 +696,6 @@ public class Server {
                     double duration = (endTime - beginTime) / (Math.pow(10, 9)); //convert to seconds
                     trackUsage(worker, duration);
                 } catch (Exception e) {
-                    e.printStackTrace();
                     io.log(e, Level.SEVERE, this.getClass());
                     worker.setResponseData(e);
                     exceptionToClient(worker);
@@ -681,8 +705,7 @@ public class Server {
                 messageToClient(worker);
             }
         } catch (Exception e) {
-              e.printStackTrace();
-              io.log(e, Level.SEVERE, this.getClass());
+            io.log(e, Level.SEVERE, this.getClass());
             worker.setResponseData(e);
             exceptionToClient(worker);
         }
@@ -852,9 +875,10 @@ public class Server {
 
         String servicez = rootWorker.getService();
         String messagez = rootWorker.getMessage();
+        String endpoints = rootWorker.getEndpoint();
         StringTokenizer st = new StringTokenizer(servicez, ",");
         StringTokenizer st1 = new StringTokenizer(messagez, ",");
-
+        StringTokenizer st2 = new StringTokenizer(endpoints, ",");
         if (st.countTokens() == 1) {
             processClientRequest(rootWorker); // there is only one service and
             // one message so just invoke
@@ -874,9 +898,9 @@ public class Server {
             for (int x = 0; st.hasMoreTokens(); x++) {
                 String service = st.nextToken().trim();
                 String message = st1.nextToken().trim();
-                ClientWorker worker = new ClientWorker(message, service,
-                        rootWorker.getRequestData(), rootWorker.getSession(),
-                        rootWorker.getResponse(), rootWorker.getRequest());
+                ClientWorker worker =  new ClientWorker(message, service,rootWorker.getRequestHeader(),rootWorker.getRequestData(), 
+                        rootWorker.getSession(),rootWorker.getResponse(), rootWorker.getRequest()); 
+                if(!endpoints.isEmpty()) worker.setEndpoint(st2.nextToken().trim());
                 worker.setRootWorkerID(rootWorker.getID());
                 workers[x] = worker;
             }
@@ -974,7 +998,7 @@ public class Server {
     /**
      * this method logs in a user
      *
-     * @param worker the id of the connected client
+     * @param worker the connected client
      */
     public void doLogin(ClientWorker worker) {
         try {
@@ -992,7 +1016,6 @@ public class Server {
                     if (!isLoggedIn) {
                         user.setUserProperty("IS_DISABLED", "1", true);
                     }
-
                 }
             }
             boolean loginSuccess = loginUser(user, uPass, worker);
@@ -1135,6 +1158,19 @@ public class Server {
             return new JSONObject(businessCachedMethodLastChanged.get(busId));
         }
     }
+    
+    private JSONObject injectResponsibleServer(){
+        try {
+            JSONObject obj = new JSONObject();
+            obj.put("server", name);
+            obj.put("timestamp", timestamp());
+            obj.put("endpoint", registeredSystems.get(name));
+            return obj;
+        } catch (JSONException ex) {
+            Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+            return null;
+        }
+    }
 
     /**
      * the strategy is to send the response directly to the client if this
@@ -1157,6 +1193,7 @@ public class Server {
                 object.put("data", worker.getResponseData());
                 object.put("reason", worker.getReason());
                 object.put("_cache_status_", injectCacheStatus(busId));
+                object.put("_server_", injectResponsibleServer());
                 worker.toClient(object);
             } else if (rootWorkerId == null) {
                 // do nothing because we shouldnt propagate
@@ -1168,6 +1205,7 @@ public class Server {
                  */
                 JSONObject data = new JSONObject();
                 data.put("_cache_status_", injectCacheStatus(busId));
+                data.put("_server_", injectResponsibleServer());
                 boolean complete = false;
                 ClientWorker[] workers = rootWorkers.get(rootWorkerId);
                 for (ClientWorker theWorker : workers) {
@@ -1193,6 +1231,7 @@ public class Server {
     public void exceptionToClient(ClientWorker worker) {
         try {
             Throwable obj = (Throwable) worker.getResponseData();
+            obj.printStackTrace();
             String rootWorkerId = worker.getRootWorkerID();
             if (rootWorkerId == null && worker.getPropagateResponse()) {
                 JSONObject object = new JSONObject();
@@ -1331,8 +1370,7 @@ public class Server {
                 HttpSession ses = worker.getSession();
                 uName = (String) ses.getAttribute("username");
                 JSONArray privileges = (JSONArray) ses.getAttribute("privileges");
-                String rGroup = this.priv;
-                permContains = privileges != null && privileges.toList().contains(rGroup); // privilege
+                permContains = privileges != null && privileges.toList().contains(this.priv); // privilege
             } else {
                 uName = "anonymous";
             }

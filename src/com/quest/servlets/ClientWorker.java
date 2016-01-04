@@ -10,7 +10,6 @@ import com.quest.access.useraccess.NonExistentUserException;
 import com.quest.access.useraccess.User;
 
 import java.io.PrintWriter;
-import java.net.InetAddress;
 import java.util.Date;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
@@ -20,7 +19,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
-import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
@@ -32,6 +30,7 @@ public class ClientWorker {
     private String msg;
     private String service;
     private JSONObject requestData;
+    private JSONObject requestHeader;
     private Object responseData;
     private HttpSession session;
     private String reason;
@@ -42,6 +41,7 @@ public class ClientWorker {
     private static Server server = ServerLink.getServerInstance();
     private static UniqueRandom randomGen = new UniqueRandom(20);
     private boolean propagateResponse;
+    private String endpoint;
 
     /**
      *
@@ -55,7 +55,7 @@ public class ClientWorker {
      * the client
      * @param request this is the http servlet request object
      */
-    public ClientWorker(String msg, String service, JSONObject requestData,
+    public ClientWorker(String msg, String service,JSONObject requestHeader, JSONObject requestData,
             HttpSession session, HttpServletResponse response,
             HttpServletRequest request) {
         this.msg = msg;
@@ -68,7 +68,38 @@ public class ClientWorker {
         // client worker always responds to the
         // client
         this.request = request;
-
+        this.endpoint = "";
+        this.requestHeader = requestHeader;
+    }
+    
+    /**
+     *
+     * @param msg the message specifying the method to be invoked on the server
+     * @param service the service specifies the class containing the method to
+     * be invoked on the server
+     * @param requestData this is data the client is sending to the server
+     * @param session this is a session object representing the current client
+     * @param ctx this is the asynchronous context bound to the current request
+     * @param response this is the response where the data will be sent back to
+     * the client
+     * @param request this is the http servlet request object
+     * @param endpoint the url we invoke to get what this client wants
+     */
+    public ClientWorker(String msg, String service,JSONObject requestHeader,JSONObject requestData,
+            HttpSession session, HttpServletResponse response,
+            HttpServletRequest request,String endpoint) {
+        this.msg = msg;
+        this.service = service;
+        this.requestData = requestData;
+        this.session = session;
+        this.response = response;
+        this.id = randomGen.nextMixedRandom();
+        this.propagateResponse = true; // this is true if we wish that this
+        // client worker always responds to the
+        // client
+        this.request = request;
+        this.endpoint = endpoint;
+        this.requestHeader = requestHeader;
     }
 
     @Override
@@ -111,6 +142,14 @@ public class ClientWorker {
      */
     public JSONObject getRequestData() {
         return this.requestData;
+    }
+    
+    public JSONObject getRequestHeader(){
+        return this.requestHeader;
+    }
+    
+    public void setRequestHeader(JSONObject requestHeader){
+        this.requestHeader = requestHeader;
     }
 
     public Object getResponseData() {
@@ -190,6 +229,14 @@ public class ClientWorker {
     public ClientWorker setResponseData(Object data) {
         this.responseData = data;
         return this;
+    }
+    
+    public void setEndpoint(String endpoint){
+        this.endpoint = endpoint;
+    }
+    
+    public String getEndpoint(){
+        return this.endpoint;
     }
 
     /**

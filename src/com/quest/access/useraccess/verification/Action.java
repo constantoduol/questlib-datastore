@@ -9,6 +9,8 @@ package com.quest.access.useraccess.verification;
  * @author connie
  */
 public interface Action {
+    
     public String getActionID();
+    
     public void saveAction();
 }

@@ -592,33 +592,57 @@ public class Datastore {
     }
     
     public static List<Entity> twoWayJoin(String[] entityNames, String[] joinProps, String[] sortProps, SortDirection[] dirs, Filter[] filters1, Filter[] filters2) {
+//        List<Entity> joined = new ArrayList();
+//        List<Entity> entitiesOne = sortProps != null && sortProps[0] != null
+//                ? Datastore.getMultipleEntitiesAsList(entityNames[0], sortProps[0], dirs[0], filters1)
+//                : Datastore.getMultipleEntitiesAsList(entityNames[0], filters1);
+//
+//        List<Entity> entitiesTwo = sortProps != null && sortProps[1] != null
+//                ? Datastore.getMultipleEntitiesAsList(entityNames[1], sortProps[1], dirs[1], filters2)
+//                : Datastore.getMultipleEntitiesAsList(entityNames[1], filters2);
+//        
+//        //no of comparisons made = maxLength * minLength; for a basic nested loop join
+//        //get longer list
+//        //go one by one getting value of join prop on one and compare with that of two
+//        //if they are equal join them
+//        List<Entity> longerList = entitiesOne.size() > entitiesTwo.size() ? entitiesOne : entitiesTwo;
+//        List<Entity> shorterList = entitiesOne.size() < entitiesTwo.size() ? entitiesOne : entitiesTwo;
+//        for (Entity longerList1 : longerList) {
+//            for (Entity shorterList1 : shorterList) {
+//                Entity en1 = longerList1;
+//                Entity en2 = shorterList1;
+//                if (en1.getProperty(joinProps[0]).equals(en2.getProperty(joinProps[1]))) {
+//                    en1.setPropertiesFrom(en2);
+//                    Entity en3 = en1.clone();
+//                    joined.add(en3);
+//                }
+//            }
+//        }
+//        
+//        //join the two entities one and two
+//        //strategy is to iterate on the larger one while doing the join
+//        //[Entity1, Entity2, Entity3, Entity4, Entity5]
+//        //[Entity6, Entity7, Entity8]
+//        //
+//        return joined;
         List<Entity> joined = new ArrayList();
-        List<Entity> entitiesOne = sortProps != null && sortProps[0] != null
-                ? Datastore.getMultipleEntitiesAsList(entityNames[0], sortProps[0], dirs[0], filters1)
-                : Datastore.getMultipleEntitiesAsList(entityNames[0], filters1);
+        Iterable<Entity> entitiesOne = sortProps != null && sortProps[0] != null
+                ? Datastore.getMultipleEntities(entityNames[0], sortProps[0], dirs[0], filters1)
+                : Datastore.getMultipleEntities(entityNames[0], filters1);
 
-        List<Entity> entitiesTwo = sortProps != null && sortProps[1] != null
-                ? Datastore.getMultipleEntitiesAsList(entityNames[1], sortProps[1], dirs[1], filters2)
-                : Datastore.getMultipleEntitiesAsList(entityNames[1], filters2);
-        
+        Iterable<Entity> entitiesTwo = sortProps != null && sortProps[1] != null
+                ? Datastore.getMultipleEntities(entityNames[1], sortProps[1], dirs[1], filters2)
+                : Datastore.getMultipleEntities(entityNames[1], filters2);
         //no of comparisons made = maxLength * minLength; for a basic nested loop join
-        //get longer list
-        //go one by one getting value of join prop on one and compare with that of two
-        //if they are equal join them
-        List<Entity> longerList = entitiesOne.size() > entitiesTwo.size() ? entitiesOne : entitiesTwo;
-        List<Entity> shorterList = entitiesOne.size() < entitiesTwo.size() ? entitiesOne : entitiesTwo;
-        for (Entity longerList1 : longerList) {
-            for (Entity shorterList1 : shorterList) {
-                Entity en1 = longerList1;
-                Entity en2 = shorterList1;
+        for (Entity en1 : entitiesOne) {
+            for (Entity en2 : entitiesTwo) {
                 if (en1.getProperty(joinProps[0]).equals(en2.getProperty(joinProps[1]))) {
+                    //en1.setPropertiesFrom(en2); //copy properties of en2
                     en1.setPropertiesFrom(en2);
-                    Entity en3 = en1.clone();
-                    joined.add(en3);
+                    joined.add(en1);
                 }
             }
         }
-        
         //join the two entities one and two
         //strategy is to iterate on the larger one while doing the join
         //[Entity1, Entity2, Entity3, Entity4, Entity5]
